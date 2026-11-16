@@ -71,6 +71,7 @@ class CajaError(ValueError):
 
 
 def _f(x):
+    """Número con coma decimal y sin ceros sobrantes, para los mensajes."""
     return f"{x:.2f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
@@ -119,6 +120,7 @@ def _bound_box(shape):
 
 
 def _up_axis(config):
+    """Eje del STEP que queda vertical (X, Y o Z)."""
     axis = str(config.get("up_axis", "Z")).strip().upper()
     if axis not in ("X", "Y", "Z"):
         raise CajaError("El eje vertical debe ser X, Y o Z.")
@@ -126,6 +128,7 @@ def _up_axis(config):
 
 
 def _rotation(config):
+    """Giro en torno a Z normalizado a [0, 360)."""
     rot = _num(config, "rotation") % 360.0
     return 0.0 if abs(rot - 360.0) < 1e-12 else rot
 
@@ -295,6 +298,7 @@ def _detect_pcb(shape, size):
 
 
 def _manual_board(config):
+    """Placa en modo manual: un bloque con las medidas indicadas."""
     try:
         bx, by, bz = (_num(config, k) for k in ("board_x", "board_y", "board_z"))
     except (KeyError, TypeError, ValueError):
@@ -307,6 +311,7 @@ def _manual_board(config):
 
 
 def board_fit(c):
+    """Medida de placa elegida (pcb, total o personalizado)."""
     fit = str(c.get("board_fit") or "pcb").strip().lower()
     if fit not in BOARD_FITS:
         raise CajaError("Tamaño de placa no reconocido (usa pcb, total o personalizado).")
@@ -365,6 +370,7 @@ def fit_board(shape, size, info, config):
 
 
 def _orientation_key_str(key):
+    """Clave de texto (board_key) de una placa STEP orientada."""
     (path, fsize, mtime), axis, rot = key
     return f"step:{path}|{fsize}|{mtime}|{axis}|{rot!r}"
 
@@ -418,29 +424,35 @@ class BoardCache:
 
     @property
     def read_count(self):
+        """Lecturas reales del STEP (Part.read o ImportGui) en esta caché."""
         return self._io["reads"]
 
     @property
     def temp_copies(self):
+        """Copias temporales hechas para leer rutas problemáticas."""
         return self._io["temp_copies"]
 
     def stats(self):
+        """Contadores y tamaño de la caché."""
         with self._lock:
             return {"read_count": self.read_count, "orient_count": self.orient_count, "hits": self.hits,
                     "temp_copies": self.temp_copies, "originals": len(self._originals),
                     "oriented": len(self._oriented)}
 
     def clear(self):
+        """Vacía la caché."""
         with self._lock:
             self._originals.clear()
             self._oriented.clear()
 
     def _drop_original(self, key):
+        """Quita un original y todas sus orientaciones."""
         self._originals.pop(key, None)
         for k in [k for k in self._oriented if k[0] == key]:
             del self._oriented[k]
 
     def _original(self, path):
+        """Original leído y validado de un STEP (lo relee si cambió en disco)."""
         fkey = _step_file_key(path)
         entry = self._originals.get(fkey)
         if entry is not None:
@@ -484,6 +496,7 @@ class BoardCache:
 # ---------------------------------------------------------------------------
 
 def rounded_box(x, y, z, radius, z0=0):
+    """Prisma rectangular centrado en XY con las aristas verticales redondeadas."""
     shape = Part.makeBox(x, y, z, V(-x/2, -y/2, z0))
     if radius > 1e-4:
         edges = [e for e in shape.Edges if e.BoundBox.ZLength > z - 1e-5]
@@ -492,6 +505,7 @@ def rounded_box(x, y, z, radius, z0=0):
 
 
 def profile_wire(rect, z):
+    """Contorno rectangular cerrado a la altura z."""
     x0, y0, x1, y1 = rect
     return Part.makePolygon([V(x0, y0, z), V(x1, y0, z), V(x1, y1, z), V(x0, y1, z), V(x0, y0, z)])
 
@@ -502,11 +516,13 @@ def ruled_solid(sections):
 
 
 def _shrink(rect, dx, dy):
+    """Rectángulo reducido dx y dy por lado."""
     x0, y0, x1, y1 = rect
     return (x0 + dx, y0 + dy, x1 - dx, y1 - dy)
 
 
 def _box_bb(shape_or_tuple):
+    """Envolvente (x0, y0, z0, x1, y1, z1) de una forma o de una tupla."""
     if isinstance(shape_or_tuple, tuple):
         return shape_or_tuple
     b = shape_or_tuple.BoundBox
@@ -514,6 +530,7 @@ def _box_bb(shape_or_tuple):
 
 
 def _bb_overlap(a, b, grow=0.0):
+    """True si dos envolventes se solapan (ampliadas `grow`)."""
     a, b = _box_bb(a), _box_bb(b)
     return all(a[i] - grow < b[i + 3] and b[i] - grow < a[i + 3] for i in range(3))
 
@@ -761,6 +778,7 @@ def validate_build(c, d):
 # ---------------------------------------------------------------------------
 
 def _num(c, key, default=0.0):
+    """Número de la configuración (acepta coma decimal). Lanza CajaError si no es válido."""
     try:
         raw = c.get(key, default)
         if isinstance(raw, bool):
@@ -774,6 +792,7 @@ def _num(c, key, default=0.0):
 
 
 def _prepare(config):
+    """Copia de la configuración con números y opciones normalizados para construir."""
     c = dict(config)
     for key in ("margin", "bottom_gap", "top_gap", "wall", "floor", "lid", "radius", "lid_depth",
                 "tongue_height", "clearance", "rib_interference"):
@@ -974,6 +993,7 @@ def magnet_towers(c, d):
 
 
 def _slice_distance(a, b, z):
+    """Distancia mínima entre las secciones de dos sólidos a la altura z."""
     wa = a.slice(V(0, 0, 1), z)
     wb = b.slice(V(0, 0, 1), z)
     if not wa or not wb:
@@ -982,6 +1002,7 @@ def _slice_distance(a, b, z):
 
 
 def _volume(shape):
+    """Volumen de una forma (0 si no se puede calcular)."""
     try:
         return max(0.0, shape.Volume)
     except Exception:
@@ -1001,6 +1022,7 @@ def _in_cavity(bb, cavity, ri):
 
 
 def _crossed_faces(bb, cavity):
+    """Caras de la caja que atraviesa una envolvente que sale de la cavidad."""
     faces = []
     for name, out in (("izquierda", bb[0] < cavity[0] - 1e-3), ("derecha", bb[3] > cavity[3] + 1e-3),
                       ("frente", bb[1] < cavity[1] - 1e-3), ("fondo", bb[4] > cavity[4] + 1e-3),
@@ -1463,6 +1485,7 @@ def detect_ports(result, margin=0.5, to_seam=False):
 
 
 def display_shapes(result, view):
+    """Base, tapa y placa colocadas según la vista (separada, cerrada o explosionada)."""
     base, lid, board = (result[k].copy() for k in ("base", "lid", "board"))
     d = result["dimensions"]
     if view == "separada":
@@ -1520,6 +1543,7 @@ def _set_params(params, result):
 
 
 def _new_document(name, hidden=False):
+    """Documento nuevo de FreeCAD (oculto si se puede)."""
     if hidden:
         try:
             return App.newDocument(name, hidden=True)
@@ -1608,6 +1632,7 @@ def lid_placement(result, view):
 
 
 def _feature(doc, name, label, created):
+    """Part::Feature del documento con ese nombre (lo crea si no existe)."""
     obj = doc.getObject(name)
     if obj is None:
         obj = doc.addObject("Part::Feature", name)
@@ -1618,6 +1643,7 @@ def _feature(doc, name, label, created):
 
 
 def _board_label(step):
+    """Etiqueta de la placa en el documento."""
     return "Placa STEP (referencia)" if step else "Envolvente manual (referencia)"
 
 
@@ -1650,6 +1676,7 @@ def _apply_board(doc, shape, board_key, state, offset_z, created, step=True, col
 
 
 def _apply_display(doc, visible, transparency):
+    """Visibilidad y transparencia de base, tapa y placa."""
     names = {"base": SYNC_NAMES["base"], "lid": SYNC_NAMES["lid"], "board": SYNC_NAMES["board"]}
     for key, flag in (visible or {}).items():
         obj = doc.getObject(names.get(key, ""))
@@ -1777,6 +1804,7 @@ def _write_file(dest, writer):
 
 
 def _summary(result):
+    """Resumen serializable (JSON) de un resultado de build."""
     c = result["config"]
     return {"dimensions": result["dimensions"], "size": [c[k] for k in ("board_x", "board_y", "board_z")],
             "tongues": result["tongues"], "warnings": result["warnings"],
@@ -1841,6 +1869,7 @@ def export_result(result, folder, config=None):
 
 
 def run_worker(request):
+    """Ejecuta una petición del worker: inspect, preview o export."""
     if _IMPORT_ERROR is not None:
         raise CajaError("No se pudo importar FreeCAD/Part. Ejecuta el worker con el Python de FreeCAD: "
                         + str(_IMPORT_ERROR))
@@ -1868,6 +1897,7 @@ def run_worker(request):
 
 # WORKER_ENTRY
 def _main(argv):
+    """Entrada del worker: lee la petición JSON y escribe la respuesta."""
     import sys
     import traceback
     if len(argv) < 3:

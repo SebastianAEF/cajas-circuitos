@@ -14,11 +14,13 @@ ES = {}       # inglés -> español (inverso)
 
 
 def fijar(codigo):
+    """Elige el idioma activo («es» o «en»)."""
     global _actual
     _actual = codigo if codigo in dict(IDIOMAS) else "es"
 
 
 def actual():
+    """Código del idioma activo."""
     return _actual
 
 
@@ -30,6 +32,7 @@ def traducir(texto):
 
 
 def _registrar(pares):
+    """Añade pares español → inglés (y el inverso) a los diccionarios."""
     for es, en in pares.items():
         EN[es] = en
         ES.setdefault(en, es)

@@ -103,6 +103,7 @@ def fmt(x):
 
 
 def etiqueta(clave):
+    """Etiqueta legible de un campo de la configuración (de cajas_modelo.LABELS)."""
     return getattr(M, "LABELS", {}).get(clave, clave)
 
 
@@ -110,6 +111,7 @@ def etiqueta(clave):
 # Localización del Python de FreeCAD
 # --------------------------------------------------------------------------
 def leer_ajustes():
+    """Ajustes locales de la aplicación (ruta de FreeCAD, carpeta de salida, apariencia…)."""
     try:
         return json.loads(AJUSTES.read_text(encoding="utf-8"))
     except Exception:
@@ -117,6 +119,7 @@ def leer_ajustes():
 
 
 def guardar_ajustes(datos):
+    """Guarda los ajustes locales; un error de escritura no interrumpe la aplicación."""
     try:
         tmp = AJUSTES.with_suffix(".tmp")
         tmp.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -138,6 +141,7 @@ def python_desde(ruta):
 
 
 def buscar_python_freecad(guardado=""):
+    """Busca el python.exe de FreeCAD: el guardado en ajustes o las rutas típicas de Windows."""
     candidatos = [guardado, r"C:\Program Files\FreeCAD 1.0\bin\python.exe"]
     for patron in (r"C:\Program Files\FreeCAD*\bin\python.exe",
                    os.path.expandvars(r"%LOCALAPPDATA%\Programs\FreeCAD*\bin\python.exe"),
@@ -163,6 +167,7 @@ class Trabajador:
         self.cancelado = False
 
     def lanzar(self, python, accion, config, folder=None, etiqueta_=""):
+        """Arranca una acción del worker (inspect/preview/export) en segundo plano."""
         if self.ocupado:
             raise RuntimeError("Ya hay una operación de FreeCAD en curso.")
         self.ocupado, self.cancelado = True, False
@@ -171,6 +176,7 @@ class Trabajador:
         hilo.start()
 
     def cancelar(self):
+        """Termina el proceso del worker en curso."""
         self.cancelado = True
         p = self.proc
         if p and p.poll() is None:
@@ -180,6 +186,7 @@ class Trabajador:
                 pass
 
     def _correr(self, python, accion, config, folder, etiqueta_):
+        """Hilo: escribe la petición, corre el worker, lee la respuesta y la deja en la cola."""
         t0 = time.time()
         tmp = None
         resultado = None
@@ -243,6 +250,7 @@ class TrabajadorVisor:
         self.sesion = None
 
     def lanzar(self, sesion, pasos, accion, etiqueta_=""):
+        """Arranca `pasos(sesion)` en segundo plano (una operación a la vez)."""
         if self.ocupado:
             raise RuntimeError("Ya hay una operación del visor en curso.")
         self.ocupado, self.sesion = True, sesion
@@ -250,10 +258,12 @@ class TrabajadorVisor:
                          daemon=True).start()
 
     def cancelar(self):
+        """Deja de esperar la operación en curso (FreeCAD puede seguir calculando)."""
         if self.ocupado and self.sesion is not None:
             self.sesion.cancelar_espera()
 
     def _correr(self, sesion, pasos, accion, etiqueta_):
+        """Hilo: ejecuta los pasos y publica ('ok' | 'error', acción, dato, duración, texto)."""
         t0 = time.time()
         try:
             resultado = ("ok", accion, pasos(sesion), time.time() - t0, etiqueta_)
@@ -340,6 +350,7 @@ class DialogoComponentes:
         w.grab_set()
 
     def _llenar(self):
+        """Rellena la tabla según el filtro y marca los componentes elegidos."""
         texto = self.filtro.get().strip().lower()
         self.tv.delete(*self.tv.get_children())
         n = 0
@@ -357,6 +368,7 @@ class DialogoComponentes:
         self.lbl_cuenta.configure(text=f"{len(self.marcados)} marcados de {len(self.comps)}")
 
     def _clic(self, evento):
+        """Marca o desmarca la fila pulsada (o la enfocada, con la barra espaciadora)."""
         iid = self.tv.identify_row(evento.y) if evento.type == tk.EventType.ButtonRelease else self.tv.focus()
         if not iid:
             return
@@ -366,10 +378,12 @@ class DialogoComponentes:
         self.tv.focus(iid)
 
     def _marcar(self, modo):
+        """Marca solo los sugeridos o ninguno."""
         self.marcados = {c["id"] for c in self.comps if c["suggested"]} if modo == "sugeridos" else set()
         self._llenar()
 
     def _aceptar(self):
+        """Valida el juego y entrega los componentes marcados a la aplicación."""
         try:
             margen = M.number(self.margen.get(), "Juego alrededor")
             if not 0 <= margen <= 5:
@@ -394,7 +408,9 @@ def crear_app():
         pass
 
     class App(tk.Tk):
+        """Ventana principal: formularios a la izquierda, visor FreeCAD y avisos a la derecha."""
         def __init__(self):
+            """Lee los ajustes, aplica idioma, tema y tamaño de texto y construye la interfaz."""
             super().__init__()
             self.title("Cajas para circuitos")
             self.geometry("1360x860")
@@ -452,6 +468,7 @@ def crear_app():
 
         # ------------------------------------------------------------ estilo
         def _estilo(self):
+            """Configura los estilos ttk con la paleta y las fuentes activas (se puede repetir en vivo)."""
             st = ttk.Style(self)
             try:
                 st.theme_use("clam")
@@ -530,6 +547,7 @@ def crear_app():
 
         # ------------------------------------------------------- construcción
         def _construir(self):
+            """Arma la ventana: barra superior con el menú, pestañas, medidas, visor y barra de estado."""
             barra = ttk.Frame(self, padding=(10, 8, 10, 6))
             barra.pack(fill="x")
             self.btn_menu = ttk.Menubutton(barra, text="☰  " + T("Opciones"), style="Toolbar.TMenubutton")
@@ -618,10 +636,12 @@ def crear_app():
             self.btn_menu.configure(text="☰  " + T("Opciones"))
 
         def _guardar_apariencia(self, **valores):
+            """Guarda en los ajustes las opciones de apariencia indicadas."""
             self.ajustes.update(valores)
             guardar_ajustes(self.ajustes)
 
         def _cambiar_idioma(self):
+            """Aplica el idioma elegido a toda la interfaz sin reiniciar."""
             I.fijar(self.var_idioma.get())
             self._guardar_apariencia(idioma=I.actual())
             self._traducir(self)
@@ -634,6 +654,7 @@ def crear_app():
             self.lbl_estado.configure(text=T("Listo."), style="Muted.TLabel")
 
         def _cambiar_tema(self):
+            """Aplica el tema claro u oscuro a los estilos ttk y a los widgets tk."""
             tema = self.var_tema.get() if self.var_tema.get() in TEMAS else "oscuro"
             UI.clear()
             UI.update(TEMAS[tema])
@@ -643,16 +664,19 @@ def crear_app():
             self._construir_menu()
 
         def _aplicar_tamano(self, clave):
+            """Ajusta el tamaño de todas las fuentes con nombre según la opción elegida."""
             delta = {k: d for k, _, d in TAMANOS}.get(clave, 0)
             for k, f in self.fuentes.items():
                 f.configure(size=self._tamanos_base[k] + delta)
 
         def _cambiar_texto(self):
+            """Aplica y guarda el tamaño del texto."""
             self._aplicar_tamano(self.var_texto.get())
             self._guardar_apariencia(texto=self.var_texto.get())
             self._estilo()
 
         def _restablecer_apariencia(self):
+            """Vuelve a español, tema oscuro, texto normal y colores por defecto."""
             self.var_idioma.set("es")
             self.var_tema.set("oscuro")
             self.var_texto.set("normal")
@@ -715,6 +739,7 @@ def crear_app():
                     pass
 
         def _colores_fc(self):
+            """Colores del visor (base, tapa, placa y si usar los del STEP), con los por defecto."""
             c = dict(COLORES_FC)
             c.update(self.ajustes.get("colores_fc") or {})
             return {k: c[k] for k in ("base", "lid", "board", "step")}
@@ -779,6 +804,7 @@ def crear_app():
 
         # ------------------------------------------------- piezas de la interfaz
         def _var(self, clave, valor=""):
+            """StringVar de un campo de la configuración; cada cambio dispara la validación en vivo."""
             v = tk.StringVar(value=valor)
             v.trace_add("write", lambda *_: self._cambio())
             self.v[clave] = v
@@ -793,6 +819,7 @@ def crear_app():
             return g
 
         def _ayuda(self, padre, texto, fila=None, estilo="Help.TLabel", ancho=500):
+            """Texto de ayuda breve (gris); con `fila` se coloca en la rejilla de una tarjeta."""
             lbl = ttk.Label(padre, text=texto, style=estilo, wraplength=ancho, justify="left")
             if fila is None:
                 lbl.pack(anchor="w", fill="x", pady=(0, 8))
@@ -801,6 +828,7 @@ def crear_app():
             return lbl
 
         def _fila(self, padre, fila, clave, texto=None, ayuda="", ancho=9):
+            """Fila etiqueta | valor | unidad | ayuda para un campo numérico. Devuelve el Entry."""
             ttk.Label(padre, text=texto or etiqueta(clave)).grid(row=fila, column=0, sticky="w", pady=3)
             e = ttk.Entry(padre, textvariable=self._var(clave), width=ancho, justify="right")
             e.grid(row=fila, column=1, sticky="w", pady=3)
@@ -812,6 +840,7 @@ def crear_app():
             return e
 
         def _radios(self, padre, var, opciones, fila0=0):
+            """Grupo de botones de opción en una tarjeta. Devuelve la lista de botones."""
             botones = []
             for i, (txt, val) in enumerate(opciones):
                 rb = ttk.Radiobutton(padre, text=txt, value=val, variable=var)
@@ -844,6 +873,7 @@ def crear_app():
             return cuerpo
 
         def _marco(self, nb, titulo):
+            """Página desplazable de una pestaña. Devuelve el marco donde va el contenido."""
             pagina = ttk.Frame(nb)
             nb.add(pagina, text=titulo)
             canvas = tk.Canvas(pagina, bg=UI["bg"], highlightthickness=0, width=550)
@@ -864,6 +894,7 @@ def crear_app():
 
         # ------------------------------------------------------------ pestañas
         def _tab_placa(self, nb):
+            """Pestaña Placa: origen (STEP o manual), orientación, medida usada y cara inferior del PCB."""
             f = self._marco(nb, "Placa")
             self._var("source", "manual")
             g = self._tarjeta(f, "Origen de la placa")
@@ -913,6 +944,7 @@ def crear_app():
             self.lbl_sug.grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
         def _tab_caja(self, nb):
+            """Pestaña Caja: holguras, paredes y apoyo de la placa."""
             f = self._marco(nb, "Caja")
             g = self._tarjeta(f, "Holguras alrededor de la placa")
             self._fila(g, 0, "margin", "Holgura lateral", "Por lado. 0 = placa a presión.")
@@ -940,6 +972,7 @@ def crear_app():
             self._ayuda(f, "Coordenadas: X/Y desde el centro de la caja; Z desde la base exterior.")
 
         def _tab_cierre(self, nb):
+            """Pestaña Cierre: tipo de cierre, altura de la unión, lengüeta/labio e imanes."""
             f = self._marco(nb, "Cierre")
             self._var("closure", "friccion")
             g = self._tarjeta(f, "Tipo de cierre (sin tornillos)")
@@ -981,6 +1014,7 @@ def crear_app():
             self._secciones_cierre()
 
         def _secciones_cierre(self):
+            """Muestra solo las secciones que aplican al cierre elegido."""
             cierre = self.v["closure"].get()
             for sec in (self._sec_encaje, self._sec_imanes):
                 sec.pack_forget()
@@ -990,6 +1024,7 @@ def crear_app():
                 self._sec_imanes.pack(fill="x", pady=(0, 10))
 
         def _tabla(self, padre, columnas, alto=6):
+            """Tabla con filas alternadas y barra de desplazamiento."""
             marco = ttk.Frame(padre)
             marco.pack(fill="x")
             tv = ttk.Treeview(marco, columns=[c for c, _, _ in columnas], show="headings",
@@ -1005,6 +1040,7 @@ def crear_app():
             return tv
 
         def _tab_aberturas(self, nb):
+            """Pestaña Aberturas: tabla, edición en vivo, detección en paredes y aberturas de tapa."""
             f = self._marco(nb, "Aberturas")
             self.tv_ports = self._tabla(f, [("side", "Cara", 115), ("shape", "Forma", 120), ("u", "u", 55),
                                             ("v", "v", 55), ("width", "Ancho", 60), ("height", "Alto", 60)])
@@ -1070,6 +1106,7 @@ def crear_app():
             self.btn_componentes.pack(anchor="w")
 
         def _tab_soportes(self, nb):
+            """Pestaña Soportes: tabla de postes y su formulario."""
             f = self._marco(nb, "Soportes")
             self._ayuda(f, "Postes cilíndricos sobre el piso. x, y desde el centro de la caja; altura "
                         "desde la cara superior del piso. Agujero 0 = macizo (no perfora el piso).")
@@ -1094,6 +1131,7 @@ def crear_app():
             self._ayuda(g, "La colisión con la placa se comprueba al calcular en FreeCAD.", fila=3)
 
         def _botones_tabla(self, padre, tipo):
+            """Botones Agregar / Actualizar / Eliminar / Deseleccionar de una tabla."""
             b = ttk.Frame(padre)
             b.pack(fill="x", pady=(6, 10))
             ttk.Button(b, text="Agregar", style="Small.TButton",
@@ -1106,6 +1144,7 @@ def crear_app():
                        command=lambda: self._editar_tabla(tipo, "none")).pack(side="right")
 
         def _tab_exportar(self, nb):
+            """Pestaña Exportar: nombre, generación en carpeta nueva y macro autónoma."""
             f = self._marco(nb, "Exportar")
             g = self._tarjeta(f, "Proyecto")
             ttk.Label(g, text="Nombre").grid(row=0, column=0, sticky="w")
@@ -1146,6 +1185,7 @@ def crear_app():
                 row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
         def _panel_visor(self, padre):
+            """Panel derecho: estado y botones del visor, vista, transparencias y avisos."""
             g = ttk.LabelFrame(padre, text="Visor 3D · FreeCAD", padding=(14, 8, 14, 12))
             g.pack(fill="both", expand=True)
             fila = ttk.Frame(g)
@@ -1221,9 +1261,11 @@ def crear_app():
 
         # ------------------------------------------------------------ visor
         def _exe_freecad(self):
+            """freecad.exe que corresponde al Python de FreeCAD configurado (o None)."""
             return S.freecad_desde(self.python_fc) if self.python_fc else None
 
         def _obtener_sesion(self):
+            """Sesión del visor (la crea si hace falta). None si no se encuentra FreeCAD."""
             exe = self._exe_freecad()
             if exe is None:
                 messagebox.showerror("FreeCAD no encontrado",
@@ -1235,12 +1277,15 @@ def crear_app():
             return self.sesion
 
         def _visor_vivo(self):
+            """True si el proceso del visor está en marcha."""
             return self.sesion is not None and self.sesion.vivo()
 
         def _libre(self):
+            """True si no hay ninguna operación en curso (worker ni visor) y la interfaz no está bloqueada."""
             return not (self._ui_bloqueada or self.trab.ocupado or self.tvisor.ocupado)
 
         def _lanzar_visor(self, accion, pasos, etiqueta_, bloquear=True):
+            """Lanza una operación con el visor; con bloquear=True deshabilita la interfaz mientras dura."""
             if not self._libre():
                 self.lbl_estado.configure(text="Espera a que termine la operación en curso.",
                                           style="Warn.TLabel")
@@ -1256,18 +1301,22 @@ def crear_app():
             return True
 
         def abrir_visor(self):
+            """Abre (o reutiliza) la ventana del visor FreeCAD."""
             self._lanzar_visor("v_abrir", lambda s: s.iniciar(), "Abriendo el visor FreeCAD")
 
         def _fin_v_abrir(self, r):
+            """Resultado de abrir el visor."""
             self.lbl_estado.configure(text="Visor FreeCAD listo" + (" (sesión existente)." if r == "reutilizada"
                                                                    else "."), style="Ok.TLabel")
             self._actualizar_visor()
 
         def cerrar_visor(self):
+            """Cierre ordenado del visor."""
             if self._visor_vivo():
                 self._lanzar_visor("v_cerrar", lambda s: s.detener(), "Cerrando el visor FreeCAD")
 
         def _fin_v_cerrar(self, r):
+            """Tras cerrar el visor ya no se muestra ninguna caja."""
             self.vista_clave = None
             self._estado_vista()
             self._actualizar_visor()
@@ -1292,6 +1341,7 @@ def crear_app():
             self._cuando_libre(self.abrir_visor)
 
         def _cuando_libre(self, accion, intentos=200):
+            """Ejecuta `accion` en cuanto termine la operación en curso (con un límite de intentos)."""
             if self.tvisor.ocupado or self.trab.ocupado:
                 if intentos > 0:
                     self.after(100, lambda: self._cuando_libre(accion, intentos - 1))
@@ -1302,12 +1352,14 @@ def crear_app():
             accion()
 
         def _sondear_visor(self):
+            """Sondeo periódico (1 s) del estado del visor."""
             try:
                 self._actualizar_visor()
             finally:
                 self.after(1000, self._sondear_visor)
 
         def _actualizar_visor(self):
+            """Muestra el estado del visor (conectado, calculando, cerrado…) y ajusta sus botones."""
             st = self.sesion.comprobar() if self.sesion else "detenida"
             texto, estilo = ESTADOS_VISOR.get(st, ESTADOS_VISOR["detenida"])
             texto = T(texto)
@@ -1319,12 +1371,14 @@ def crear_app():
                 self._estado_vista()
 
         def _datos_vista(self):
+            """Vista, visibilidad, transparencias y colores que se envían al visor."""
             return {"vista": self.v["view"].get(),
                     "visible": {k: bool(var.get()) for k, var in self.ver.items()},
                     "transparencia": {k: int(var.get()) for k, var in self.transp.items()},
                     "colores": self._colores_fc()}
 
         def _cambio_transp(self, k, valor, lbl):
+            """Cambio de un deslizador de transparencia: actualiza la etiqueta y programa la vista."""
             n = int(round(float(valor)))
             if n != self.transp[k].get():
                 self.transp[k].set(n)
@@ -1332,6 +1386,7 @@ def crear_app():
                 self._programar_vista()
 
         def _programar_vista(self, encuadrar=False):
+            """Programa el envío de la vista al visor (agrupa cambios rápidos)."""
             if self._cargando:
                 return
             if self._tarea_vista:
@@ -1349,6 +1404,7 @@ def crear_app():
                                "v_vista", "Vista")
 
         def _fin_v_vista(self, r):
+            """Resultado de aplicar la vista (sin diálogos)."""
             if not r.get("hay_caja"):
                 self.lbl_estado.configure(text="Vista aplicada (todavía no hay caja calculada).",
                                           style="Muted.TLabel")
@@ -1356,11 +1412,13 @@ def crear_app():
         def _clave_vista(self, cfg):
             # La vista, las opciones de exportación y la cara inferior del PCB (solo sugiere la
             # altura de soportes) no cambian la geometría.
+            """Huella de la geometría de una configuración: dice si el visor muestra la caja actual."""
             return json.dumps({k: v for k, v in cfg.items()
                                if k not in ("view", "export_stl", "export_step", "name", "pcb_offset")},
                               sort_keys=True)
 
         def _info_visor(self, r, titulo):
+            """Tiempos y lecturas del STEP de la última operación del visor."""
             cache = r.get("cache", {})
             t = r.get("tiempos", {})
             partes = [f"{titulo}: " + " · ".join(f"{k} {v:.2f} s" for k, v in t.items())]
@@ -1373,6 +1431,7 @@ def crear_app():
 
         # ------------------------------------------------- datos y validación
         def _cambio(self):
+            """Marca el proyecto como modificado y programa la validación en vivo."""
             if self._cargando:
                 return
             self.modificado = True
@@ -1424,6 +1483,7 @@ def crear_app():
                 self._poner_medidas(self._medida_para(self.v["board_fit"].get()))
 
         def _poner_medidas(self, medidas):
+            """Escribe en los campos las medidas de la placa sin disparar la validación."""
             if not medidas:
                 return
             cargando, self._cargando = self._cargando, True
@@ -1432,6 +1492,7 @@ def crear_app():
             self._cargando = cargando
 
         def _clave_step(self, c):
+            """Identifica la medición del STEP: ruta, eje, giro y firma del archivo (tamaño, fecha)."""
             try:
                 giro = round(M.number(c["rotation"]), 6)
             except (ValueError, TypeError):
@@ -1444,6 +1505,7 @@ def crear_app():
             return (c["step_path"], c["up_axis"], giro, firma)
 
         def _step_pendiente(self, c):
+            """True si el STEP (o su orientación) cambió desde la última medición."""
             return bool(c["step_path"]) and self.medida_clave != self._clave_step(c)
 
         def _validar(self):
@@ -1454,6 +1516,7 @@ def crear_app():
             return M.config_from(c)
 
         def _validar_en_vivo(self):
+            """Valida mientras se escribe: medidas, avisos, pista de aberturas y actualización automática."""
             self._tarea_val = None
             modo_step = self.v["source"].get() == "step"
             fijas = modo_step and self.v["board_fit"].get() != "personalizado"
@@ -1505,6 +1568,7 @@ def crear_app():
             self._estado_vista()
 
         def _pista_puerto(self, cfg=None, d=None):
+            """Rango válido de u y v para la cara elegida en el formulario de aberturas."""
             try:
                 cfg = cfg or self._validar()
                 d = d or M.dimensions(cfg)
@@ -1527,6 +1591,7 @@ def crear_app():
             self.lbl_pista_p.configure(text=txt)
 
         def _estado_vista(self):
+            """Indica si el visor muestra la caja de la configuración actual."""
             if self.vista_clave is None:
                 self.lbl_vista.configure(text="El visor no muestra una caja calculada con esta configuración."
                                          if self._visor_vivo() else "", style="Muted.TLabel")
@@ -1543,6 +1608,7 @@ def crear_app():
                                          style="Ok.TLabel")
 
         def _cargar_config(self, c):
+            """Rellena todos los campos con una configuración (proyecto abierto o valores por defecto)."""
             self._cargando = True
             try:
                 for k in CAMPOS_NUM:
@@ -1576,11 +1642,13 @@ def crear_app():
             self._validar_en_vivo()
 
         def _crudo_sin_medida(self):
+            """Datos mínimos de la placa STEP (ruta, eje y giro)."""
             return {"step_path": self.v["step_path"].get().strip(), "up_axis": self.v["up_axis"].get(),
                     "rotation": self.v["rotation"].get()}
 
         # ------------------------------------------------------------ tablas
         def _refrescar_tablas(self):
+            """Vuelve a dibujar las tablas de aberturas y soportes."""
             self.tv_ports.delete(*self.tv_ports.get_children())
             for i, p in enumerate(self.ports):
                 forma = T(FORMA_TXT.get(p.get("shape", "rectangular"), "Rectangular"))
@@ -1595,10 +1663,12 @@ def crear_app():
                     fmt(s[k]) for k in ("x", "y", "height", "diameter", "hole")))
 
         def _tabla_de(self, tipo):
+            """(tabla, lista, variables del formulario) de las aberturas o de los soportes."""
             return ((self.tv_ports, self.ports, self.pv) if tipo == "ports"
                     else (self.tv_supports, self.supports, self.sv))
 
         def _sel_tabla(self, tipo):
+            """Al seleccionar una fila, copia sus valores al formulario."""
             tv, lista, vars_ = self._tabla_de(tipo)
             sel = tv.selection()
             if not sel:
@@ -1664,6 +1734,7 @@ def crear_app():
                 self._cambio()
 
         def _editar_tabla(self, tipo, accion):
+            """Agrega, actualiza, elimina o deselecciona una fila según `accion`."""
             tv, lista, _ = self._tabla_de(tipo)
             sel = tv.selection()
             idx = int(sel[0]) if sel else None
@@ -1693,6 +1764,7 @@ def crear_app():
             self._cambio()
 
         def _altura_sugerida(self):
+            """Escribe la altura de soporte que deja el PCB apoyado en él."""
             try:
                 c = self._crudo()
                 self.sv["height"].set(fmt(M.suggested_support_height(M.config_from(dict(c, step_path="")))))
@@ -1701,6 +1773,7 @@ def crear_app():
 
         # ------------------------------------------------------------ FreeCAD
         def _actualizar_fc(self):
+            """Muestra qué FreeCAD se está usando."""
             if self.python_fc:
                 carpeta = Path(self.python_fc).parent.parent.name or str(self.python_fc)
                 self.lbl_fc.configure(text=f"✓ {carpeta}", style="Help.TLabel")
@@ -1708,6 +1781,7 @@ def crear_app():
                 self.lbl_fc.configure(text="FreeCAD no encontrado: indica su python.exe", style="Bad.TLabel")
 
         def elegir_freecad(self):
+            """Permite elegir a mano el python.exe (o freecad.exe) de FreeCAD."""
             ruta = filedialog.askopenfilename(
                 parent=self, title="Python de FreeCAD (bin\\python.exe) o freecad.exe",
                 filetypes=[("Ejecutables", "*.exe"), ("Todos", "*.*")],
@@ -1725,6 +1799,7 @@ def crear_app():
             self._actualizar_fc()
 
         def _lanzar(self, accion, config, folder=None, etiqueta_=""):
+            """Lanza una acción del worker (visor cerrado), bloqueando la interfaz."""
             if not self._libre():
                 self.lbl_estado.configure(text="Espera a que termine la operación en curso.",
                                           style="Warn.TLabel")
@@ -1745,6 +1820,7 @@ def crear_app():
             return True
 
         def _ocupado(self, si, texto=""):
+            """Bloquea o desbloquea la interfaz durante una operación larga y muestra el progreso."""
             if si and not self._ui_bloqueada:
                 self._estados_controles = []
                 def bloquear(padre):
@@ -1773,11 +1849,13 @@ def crear_app():
                 self.prog.pack_forget()
 
         def cancelar(self):
+            """Deja de esperar la operación en curso."""
             self.cadena = []
             self.trab.cancelar()
             self.tvisor.cancelar()
 
         def _procesar_cola(self):
+            """Bucle (80 ms) que aplica en Tk los resultados que llegan de los hilos."""
             try:
                 while True:
                     tipo, accion, dato, dur, texto = self.cola.get_nowait()
@@ -1826,6 +1904,7 @@ def crear_app():
 
         # ---------------------------------------------------- medición STEP
         def elegir_step(self):
+            """Elige el archivo STEP y lo mide."""
             if self._ui_bloqueada:
                 return
             ruta = filedialog.askopenfilename(parent=self, title="Placa en formato STEP",
@@ -1837,6 +1916,7 @@ def crear_app():
                 self.medir()
 
         def medir(self, despues=None):
+            """Mide el STEP: con el visor (queda en memoria y se muestra) o, sin él, con el worker."""
             if self._ui_bloqueada:
                 return
             c = self._crudo()
@@ -1871,6 +1951,7 @@ def crear_app():
             self._lanzar("inspect", pet, etiqueta_="Midiendo STEP con FreeCAD")
 
         def _fin_inspect(self, r):
+            """Aplica una medición del STEP. Devuelve False si el STEP cambió mientras se medía."""
             if self._clave_en_curso != self._clave_step(self._crudo()):
                 self.cadena = []
                 self.lbl_medida.configure(text="El STEP cambió durante la lectura. Vuelve a medirlo.")
@@ -1907,6 +1988,7 @@ def crear_app():
             return True
 
         def _fin_v_cargar(self, r):
+            """Resultado de cargar la placa en el visor."""
             if self._fin_inspect(r):
                 self._info_visor(r, "Placa cargada")
                 self._mostrar_avisos(list(r.get("warnings", [])) + [
@@ -1946,6 +2028,7 @@ def crear_app():
                 self._lanzar_visor("v_calcular", pasos, "Calculando la caja en FreeCAD")
 
         def _fin_v_calcular(self, r):
+            """Resultado de calcular la caja: medidas de la placa, avisos y estado de la vista."""
             cfg = r["config"]
             if cfg.get("step_path"):
                 if self._clave_en_curso != self._clave_step(self._crudo()):
@@ -1960,11 +2043,13 @@ def crear_app():
             self._estado_vista()
 
         def _cambio_auto(self):
+            """Guarda la opción de actualización automática y la aplica."""
             self.ajustes["auto_visor"] = bool(self.var_auto.get())
             guardar_ajustes(self.ajustes)
             self._programar_auto()
 
         def _fin_v_auto(self, r):
+            """Resultado de una actualización automática; reprograma si algo cambió mientras tanto."""
             self._fin_v_calcular(r)
             self._programar_auto()      # por si algo cambió mientras se calculaba
 
@@ -1986,6 +2071,7 @@ def crear_app():
             self._tarea_auto = self.after(AUTO_MS, self._auto_calcular)
 
         def _auto_calcular(self):
+            """Lanza la actualización automática cuando no hay otra operación en curso."""
             self._tarea_auto = None
             if not self.var_auto.get() or not self._visor_vivo():
                 return
@@ -2001,6 +2087,7 @@ def crear_app():
 
         # ------------------------------------------------ aberturas automáticas
         def detectar_aberturas(self):
+            """Pide al visor aberturas para los componentes que atraviesan las paredes."""
             if self._ui_bloqueada:
                 return
             try:
@@ -2027,6 +2114,7 @@ def crear_app():
             self._lanzar_visor("v_detectar", pasos, "Buscando componentes que atraviesan la caja")
 
         def _fin_v_detectar(self, r):
+            """Agrega las aberturas detectadas y resume lo que se agregó."""
             if self._clave_en_curso != self._clave_step(self._crudo()):
                 self.lbl_estado.configure(text="La placa cambió durante la detección. Vuelve a detectar.",
                                           style="Warn.TLabel")
@@ -2077,6 +2165,7 @@ def crear_app():
             self._lanzar_visor("v_componentes", pasos, "Leyendo los componentes de la placa")
 
         def _fin_v_componentes(self, r):
+            """Abre la lista de componentes para elegir aberturas en la tapa."""
             if self._clave_en_curso != self._clave_step(self._crudo()):
                 self.lbl_estado.configure(text="La placa cambió mientras se leía. Vuelve a intentarlo.",
                                           style="Warn.TLabel")
@@ -2126,6 +2215,7 @@ def crear_app():
             self.v["split_height"].set(fmt(round(vs[len(vs)//2], 2)))
 
         def _avisos(self, r):
+            """Avisos del cálculo y resumen del cierre para el panel de avisos."""
             av = list(r.get("warnings", []))
             av.append(f"Lengüetas: {r.get('tongues', 0)} · interferencia de nervios en cierre: "
                       f"{r.get('fit_interference', 0):.3f} mm³ · colisión placa–caja: "
@@ -2152,12 +2242,14 @@ def crear_app():
 
         # ---------------------------------------------------- exportación
         def elegir_salida(self):
+            """Elige la carpeta donde se crean las generaciones."""
             d = filedialog.askdirectory(parent=self, title="Carpeta donde crear las generaciones",
                                         initialdir=self.var_salida.get() or str(AQUI))
             if d:
                 self.var_salida.set(str(Path(d)))
 
         def generar(self):
+            """Genera FCStd/STL/STEP, proyecto y macro en una carpeta nueva (con el visor o el worker)."""
             if self._ui_bloqueada:
                 return
             c = self._crudo()
@@ -2192,6 +2284,7 @@ def crear_app():
                 self._lanzar("export", cfg, folder=carpeta, etiqueta_="Generando modelos con FreeCAD")
 
         def _fin_export(self, r):
+            """Resultado de la generación con el worker."""
             self.ultima_salida = self._carpeta_en_curso
             self.btn_abrir_salida.configure(state="normal")
             archivos = [Path(f).name for f in r.get("files", [])]
@@ -2202,14 +2295,17 @@ def crear_app():
                                 parent=self)
 
         def _fin_v_exportar(self, r):
+            """Resultado de la generación con el visor."""
             self._info_visor(r, "Exportación")
             self._fin_export(r)
 
         def _abrir_ultima(self):
+            """Abre en el explorador la última carpeta generada."""
             if self.ultima_salida and Path(self.ultima_salida).is_dir():
                 os.startfile(self.ultima_salida)  # noqa: S606 - abre el explorador
 
         def exportar_macro(self):
+            """Guarda una macro .FCMacro autónoma con el constructor y la configuración."""
             if self._ui_bloqueada:
                 return
             c = self._crudo()
@@ -2237,10 +2333,12 @@ def crear_app():
 
         # ---------------------------------------------------- proyectos
         def _actualizar_titulo(self):
+            """Título de la ventana: proyecto y marca de cambios sin guardar."""
             nombre = Path(self.proyecto).name if self.proyecto else T("Proyecto sin guardar")
             self.title(f"{'*' if self.modificado else ''}{nombre} — {T('Cajas para circuitos')}")
 
         def _descartar_cambios(self):
+            """Pregunta si guardar los cambios. Devuelve False si el usuario cancela."""
             if not self.modificado:
                 return True
             r = messagebox.askyesnocancel("Cambios sin guardar", "¿Guardar los cambios del proyecto?",
@@ -2250,6 +2348,7 @@ def crear_app():
             return self.guardar() if r else True
 
         def nuevo(self):
+            """Proyecto nuevo con los valores por defecto."""
             if self._ui_bloqueada:
                 return
             if not self._descartar_cambios():
@@ -2260,6 +2359,7 @@ def crear_app():
             self._actualizar_titulo()
 
         def abrir(self):
+            """Abre un proyecto .cajas.json."""
             if self._ui_bloqueada:
                 return
             if not self._descartar_cambios():
@@ -2283,11 +2383,13 @@ def crear_app():
                                        parent=self)
 
         def guardar(self):
+            """Guarda el proyecto (pide ruta si es nuevo)."""
             if not self.proyecto:
                 return self.guardar_como()
             return self._guardar_en(self.proyecto)
 
         def guardar_como(self):
+            """Guarda el proyecto con otro nombre."""
             try:
                 nombre = M.safe_name(self.v["name"].get() or "Caja_circuito")
             except Exception:
@@ -2300,6 +2402,7 @@ def crear_app():
             return self._guardar_en(ruta)
 
         def _guardar_en(self, ruta):
+            """Valida y guarda el proyecto en `ruta`."""
             try:
                 cfg = self._validar()
                 M.save_project(ruta, cfg)
@@ -2314,6 +2417,7 @@ def crear_app():
             return True
 
         def ayuda(self):
+            """Resumen de uso."""
             messagebox.showinfo("Ayuda", (
                 "1. Placa: medidas manuales o un STEP. Con STEP elige el eje vertical y el giro; "
                 "FreeCAD mide la envolvente de todos los componentes.\n"
@@ -2324,9 +2428,10 @@ def crear_app():
                 "memoria: los cambios siguientes solo regeneran base y tapa.\n"
                 "5. Exportar: carpeta nueva con FCStd, STL/STEP, proyecto y macro.\n\n"
                 "Coordenadas: X/Y desde el centro de la caja; Z desde la base exterior. "
-                "Se acepta coma decimal. Consulta README_CAJAS.md."), parent=self)
+                "Se acepta coma decimal. Consulta README.md."), parent=self)
 
         def _cerrar(self):
+            """Al cerrar: pregunta por los cambios, cierra el visor y guarda los ajustes."""
             if not self._descartar_cambios():
                 return
             self.trab.cancelar()
@@ -2345,6 +2450,7 @@ def crear_app():
 
 
 def main():
+    """Punto de entrada: abre la aplicación."""
     crear_app().mainloop()
 
 

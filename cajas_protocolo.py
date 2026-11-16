@@ -48,10 +48,12 @@ class ErrorProtocolo(ValueError):
 
 
 def nueva_id():
+    """Identificador nuevo de petición."""
     return uuid.uuid4().hex
 
 
 def nuevo_token():
+    """Token secreto de una sesión del visor."""
     return uuid.uuid4().hex + uuid.uuid4().hex
 
 
@@ -94,6 +96,7 @@ def leer_json(ruta, intentos=1):
 
 
 def preparar_directorio(base):
+    """Crea las carpetas de peticiones y respuestas de la sesión."""
     base = Path(base)
     (base / DIR_PETICIONES).mkdir(parents=True, exist_ok=True)
     (base / DIR_RESPUESTAS).mkdir(parents=True, exist_ok=True)
@@ -101,10 +104,12 @@ def preparar_directorio(base):
 
 
 def ruta_peticion(base, id_):
+    """Ruta del archivo de una petición."""
     return Path(base) / DIR_PETICIONES / f"{id_}.json"
 
 
 def ruta_respuesta(base, id_):
+    """Ruta del archivo de una respuesta."""
     return Path(base) / DIR_RESPUESTAS / f"{id_}.json"
 
 
@@ -118,6 +123,7 @@ def peticion(token, accion, datos=None, id_=None, plazo=None):
 
 
 def respuesta(token, id_, ok, resultado=None, error=None, tipo=None, duracion=0.0):
+    """Arma la respuesta del puente (resultado o error con su tipo)."""
     r = {"protocolo": PROTOCOLO, "token": token, "id": id_, "ok": bool(ok),
          "duracion": round(float(duracion), 4)}
     if ok:
@@ -129,12 +135,14 @@ def respuesta(token, id_, ok, resultado=None, error=None, tipo=None, duracion=0.
 
 
 def _bool(valor, nombre):
+    """Exige un booleano JSON (no acepta 0/1 ni textos)."""
     if not isinstance(valor, bool):
         raise ErrorProtocolo(f"«{nombre}» debe ser verdadero o falso.", "validacion")
     return valor
 
 
 def _config(datos):
+    """Configuración de la caja dentro de los datos de una petición."""
     c = datos.get("config")
     if not isinstance(c, dict):
         raise ErrorProtocolo("Falta la configuración de la caja («config»).", "validacion")
@@ -142,6 +150,7 @@ def _config(datos):
 
 
 def _validar_vista(datos, salida):
+    """Valida vista, visibilidad, transparencias, encuadre y colores de una petición."""
     if "vista" in datos:
         if datos["vista"] not in VISTAS:
             raise ErrorProtocolo("Vista no reconocida: " + str(datos["vista"]), "validacion")

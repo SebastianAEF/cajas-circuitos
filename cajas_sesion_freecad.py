@@ -55,6 +55,7 @@ def freecad_desde(ruta):
 
 
 class SesionFreeCAD:
+    """Visor FreeCAD administrado: arranque, peticiones con espera y cierre, sin bloquear Tk."""
     def __init__(self, freecad_exe, puente=PUENTE, app_dir=AQUI, registro=None):
         self.freecad_exe = Path(freecad_exe)
         self.puente = Path(puente)
@@ -72,10 +73,12 @@ class SesionFreeCAD:
 
     # ------------------------------------------------------------ estado
     def vivo(self):
+        """True si el proceso del visor está en marcha."""
         return self.proc is not None and self.proc.poll() is None
 
     @property
     def ocupada(self):
+        """True mientras hay una petición en curso."""
         return self._peticion.locked()
 
     def leer_latido(self):
@@ -214,6 +217,7 @@ class SesionFreeCAD:
                 pass
 
     def _limpiar(self):
+        """Borra el directorio de la sesión (con reintentos) y olvida el proceso."""
         self.proc = None
         if self.dir:
             # FreeCAD puede tardar un instante en soltar sus archivos al terminar.
@@ -226,6 +230,7 @@ class SesionFreeCAD:
         self._ultimo_latido = None
 
     def _final_registro(self):
+        """Últimas líneas del registro del puente, para los mensajes de error."""
         try:
             texto = (Path(self.dir) / P.REGISTRO).read_text(encoding="utf-8")
             return "\n" + texto.strip()[-1200:] if texto.strip() else ""

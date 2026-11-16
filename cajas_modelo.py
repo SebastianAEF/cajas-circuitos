@@ -115,6 +115,7 @@ class ConfigError(ValueError):
 
 
 def _fmt(x):
+    """Número con coma decimal para los mensajes."""
     return f"{x:g}".replace(".", ",")
 
 
@@ -151,6 +152,7 @@ def boolean(value, label="Valor"):
 
 
 def _choice(value, options, label, key, transform=str.lower):
+    """Valor de una lista cerrada de opciones; lanza ConfigError si no es válido."""
     text = transform(str(value).strip())
     text = text.replace("fricción", "friccion")
     if text not in options:
@@ -179,6 +181,7 @@ def safe_name(name, default="Caja"):
 # ---------------------------------------------------------------------------
 
 def _normalize_item(raw, defaults, labels, kind, index):
+    """Normaliza un soporte o una abertura con sus valores por defecto."""
     prefix = f"{kind} {index}"
     if not isinstance(raw, dict):
         raise ConfigError(f"{prefix}: formato inválido (se esperaba un diccionario).")
@@ -376,6 +379,7 @@ def warnings(c):
 
 
 def _err(key, text):
+    """Lanza ConfigError con la etiqueta del campo."""
     raise ConfigError(f"{LABELS[key]}: {text}", key)
 
 
@@ -509,6 +513,7 @@ def config_from(data):
 # ---------------------------------------------------------------------------
 
 def _atomic_write(path, text):
+    """Escribe un archivo de texto mediante temporal + reemplazo (nunca queda a medias)."""
     path = Path(path)
     fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:

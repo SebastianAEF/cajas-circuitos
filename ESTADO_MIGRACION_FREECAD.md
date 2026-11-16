@@ -264,3 +264,8 @@ Hubo un respaldo antes de editar: `respaldo_antes_personalizacion_20261115_21161
   - `prueba_gui`: 61/61 (nuevas: idioma, tema y texto de ida y vuelta, y colores en cada vista).
   - Comprobado con FreeCAD real: colores propios en base, tapa y placa; vuelta a los colores del STEP sin recalcular; color inválido rechazado.
   - Capturas revisadas: la interfaz en inglés con tema claro, y la ventana de colores.
+
+## Documentación (2026-11-16)
+
+- Se agregaron docstrings a unas 180 funciones y clases que no tenían, sobre todo en la interfaz.
+- `README_CAJAS.md` pasó a ser `README.md` (portada del repositorio) y se reescribió con el estado actual. Las menciones a `README_CAJAS.md` en las secciones anteriores de este archivo se refieren a él.

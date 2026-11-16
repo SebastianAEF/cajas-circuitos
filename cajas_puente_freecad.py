@@ -32,6 +32,7 @@ INTERVALO_PADRE = 2.0
 
 
 def _registrar(texto):
+    """Añade una línea con hora al registro puente.log de la sesión."""
     try:
         with open(os.path.join(DIR_SESION, "puente.log"), "a", encoding="utf-8") as f:
             f.write(time.strftime("%H:%M:%S ") + texto.rstrip() + "\n")
@@ -40,7 +41,9 @@ def _registrar(texto):
 
 
 class Puente:
+    """Atiende las peticiones de la aplicación dentro de FreeCAD con un QTimer (sin bloquear la GUI)."""
     def __init__(self):
+        """Importa FreeCAD y los módulos de la aplicación, crea la caché y arranca el temporizador."""
         import FreeCAD as App
         import FreeCADGui as Gui
         from PySide import QtCore
@@ -82,6 +85,7 @@ class Puente:
 
     # ------------------------------------------------------------ latido
     def latido(self, forzar=False, estado=None):
+        """Publica latido.json (estado, pid, petición en curso) cada medio segundo o al forzarlo."""
         ahora = time.time()
         if not forzar and ahora - self.ultimo_latido < INTERVALO_LATIDO:
             return
@@ -98,6 +102,7 @@ class Puente:
 
     # ------------------------------------------------------------ bucle
     def tick(self):
+        """Cada 100 ms: comprueba que la aplicación siga viva, late y atiende una petición."""
         if self.ocupado or self.deteniendo:
             return
         try:
@@ -125,6 +130,7 @@ class Puente:
             _registrar("Error en el bucle del puente:\n" + traceback.format_exc())
 
     def procesar(self, ruta):
+        """Lee, valida y despacha una petición; publica el latido «listo» antes de responder."""
         P = self.P
         nombre = os.path.basename(ruta)[:-5]
         id_ = nombre if P.RE_ID.match(nombre) else None
@@ -174,11 +180,13 @@ class Puente:
             self.responder(id_p, False, error=salida["error"], tipo=salida["tipo"], t0=t0)
 
     def responder(self, id_, ok, resultado=None, error=None, tipo=None, t0=None):
+        """Escribe la respuesta de una petición (de forma atómica)."""
         r = self.P.respuesta(TOKEN, id_, ok, resultado, error, tipo, time.time() - (t0 or time.time()))
         self.P.escribir_json_atomico(self.P.ruta_respuesta(DIR_SESION, id_), r)
 
     # ------------------------------------------------------------ documento
     def documento(self):
+        """Documento «Cajas - vista previa» (lo recrea si el usuario lo cerró)."""
         App = self.App
         if NOMBRE_DOC in App.listDocuments():
             doc = App.getDocument(NOMBRE_DOC)
@@ -193,6 +201,7 @@ class Puente:
         return doc
 
     def _encuadrar(self, doc, isometrica=True):
+        """Vista isométrica y encuadre del documento."""
         try:
             vista = self.Gui.getDocument(doc.Name).activeView()
             if isometrica:
@@ -215,6 +224,7 @@ class Puente:
         return M.validate(c), size, info
 
     def _resumen_result(self, r):
+        """Resumen de un build para la respuesta."""
         return {"dimensions": r["dimensions"],
                 "size": [r["config"][k] for k in ("board_x", "board_y", "board_z")],
                 "tongues": r.get("tongues"), "warnings": list(r.get("warnings", [])),
@@ -263,6 +273,7 @@ class Puente:
         vo.Transparency = t
 
     def a_estado(self, datos):
+        """Acción «estado»: versión, documento, caché y peticiones atendidas."""
         docs = list(self.App.listDocuments())
         return {"pid": os.getpid(), "version": ".".join(self.App.Version()[:3]),
                 "gui": bool(self.App.GuiUp), "documento": NOMBRE_DOC in docs,
@@ -270,6 +281,7 @@ class Puente:
                 "atendidas": self.atendidas, "activo_s": round(time.time() - self.inicio, 1)}
 
     def a_cargar_placa(self, datos):
+        """Acción «cargar_placa»: lee (o toma de la caché) la placa y la muestra sola."""
         M = self.M
         c = M.normalize(datos["config"])
         if not os.path.isfile(c["step_path"]):
@@ -303,6 +315,7 @@ class Puente:
                 "cache": self.cache.stats()}
 
     def a_calcular(self, datos):
+        """Acción «calcular»: construye la caja y actualiza el documento (solo base y tapa si la placa no cambió)."""
         import json
         for k in ("vista", "visible", "transparencia"):
             if k in datos:
@@ -333,6 +346,7 @@ class Puente:
         return out
 
     def a_vista(self, datos):
+        """Acción «vista»: vista, visibilidad, transparencias y colores sin recalcular."""
         for k in ("visible", "transparencia"):
             if k in datos:
                 self.vista[k] = dict(self.vista[k], **datos[k])
@@ -357,6 +371,7 @@ class Puente:
         return {"vista": self.vista, "hay_caja": True}
 
     def a_exportar(self, datos):
+        """Acción «exportar»: genera los archivos reutilizando la caja calculada si coincide."""
         import json
         lecturas = self.cache.read_count
         cfg, _size, _info = self._preparar_config(datos["config"])
@@ -406,6 +421,7 @@ class Puente:
                 "tiempos": {"componentes": round(time.time() - t0, 3)}}
 
     def a_captura(self, datos):
+        """Acción «captura»: guarda una imagen de la vista 3D."""
         doc = self.documento()
         carpeta = os.path.join(DIR_SESION, "capturas")
         os.makedirs(carpeta, exist_ok=True)
@@ -418,11 +434,13 @@ class Puente:
                              if self.App.GuiUp and o.ViewObject and o.ViewObject.Visibility]}
 
     def a_detener(self, datos):
+        """Acción «detener»: cierra el documento y FreeCAD de forma ordenada."""
         self.deteniendo = True
         self.QtCore.QTimer.singleShot(300, self.salir)
         return {"deteniendo": True}
 
     def salir(self):
+        """Cierra el documento propio y la ventana de FreeCAD."""
         self.deteniendo = True
         self.timer.stop()
         self.latido(forzar=True, estado="deteniendo")
@@ -439,6 +457,7 @@ class Puente:
 
 
 def _arrancar():
+    """Crea el puente solo si FreeCAD lo lanzó la aplicación (variables de entorno presentes)."""
     if not (DIR_SESION and TOKEN and DIR_APP and os.path.isdir(DIR_SESION)):
         try:
             import FreeCAD
