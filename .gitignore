@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+
+# Configuracion local generada por la GUI.
+embobinadora_config.json
+cajas_ajustes_local.json
+cajas_generadas/
+claude_cajas_*.jsonl
+claude_cajas_*error.log
+
+# Archivos temporales de editores y SO.
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+
+# Respaldos fechados, registros y notas de trabajo locales.
+respaldo_*/
+*.log
+claude_*.jsonl
+PROMPT_CLAUDE_CAJAS.txt
+CONTINUAR_CAJAS_CLAUDE.md
+REVISION_CAJAS.md
+RESULTADO_CLAUDE_CAJAS.md
+
+# Configuración local de herramientas.
+.codex/
