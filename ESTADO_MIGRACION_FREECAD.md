@@ -269,3 +269,29 @@ Hubo un respaldo antes de editar: `respaldo_antes_personalizacion_20261115_21161
 
 - Se agregaron docstrings a unas 180 funciones y clases que no tenían, sobre todo en la interfaz.
 - `README_CAJAS.md` pasó a ser `README.md` (portada del repositorio) y se reescribió con el estado actual. Las menciones a `README_CAJAS.md` en las secciones anteriores de este archivo se refieren a él.
+
+## Ajuste posterior: cierres con tornillos (2026-11-16)
+
+Hubo un respaldo antes de editar: `respaldo_antes_tornillos_20261116_013100/`.
+
+- **Cierres nuevos:** `tornillos` (autorroscantes directo al plástico) e `insertos` (insertos roscados en caliente).
+  - Cuatro torres de esquina fuera de la cavidad; `_corner_towers` es compartido con los imanes.
+  - Tapa: paso libre y alojamiento de cabeza cilíndrica o avellanada (90°).
+  - Base: agujero piloto o del inserto. También llevan labio de alineación.
+- **Tabla `SCREWS`** (M2, M2.5, M3, M4), duplicada en `cajas_modelo` y `cajas_freecad`; una prueba comprueba que coincidan.
+  - Agujero sin inserto = diámetro nominal (M4 → 4 mm), como pidió el usuario.
+  - Con inserto: M4 → 5,4 mm (también a pedido del usuario), M3 4,0, M2.5 3,6 y M2 3,2.
+  - `screw_hole` e `insert_depth` permiten cambiarlos (0 = típico).
+- **`screw_fit`:** calcula el material de la tapa bajo la cabeza, la rosca útil, la profundidad del agujero y el rango de largos que sirven.
+  - Rosca mínima: 2 diámetros sin inserto, o 75 % del inserto.
+  - Siempre quedan al menos 0,8 mm bajo el agujero.
+  - Valida en vivo y lo muestra en la interfaz.
+- **Pruebas:**
+  - unittest: 85 OK;
+  - `prueba_opciones_freecad`: OK, con 12 comprobaciones nuevas (8 combinaciones de cierre, métrica y cabeza con agujeros y alojamientos medidos, M4 4 / 5,4 mm, y largos fuera de rango rechazados);
+  - `prueba_cache_freecad`: 10/10;
+  - `prueba_freecad_real`: 17/17;
+  - `prueba_regresiones_freecad`: OK;
+  - `prueba_puente_freecad`: 16/16;
+  - `prueba_gui`: 61/61.
+  - Captura revisada: insertos M3 con cabeza avellanada.

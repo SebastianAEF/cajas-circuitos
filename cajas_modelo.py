@@ -29,8 +29,19 @@ CORE_FILE = Path(__file__).resolve().with_name("cajas_freecad.py")
 
 SIDES = ("frente", "fondo", "izquierda", "derecha", "tapa")
 LATERAL_SIDES = SIDES[:4]
-CLOSURES = ("friccion", "labio", "imanes", "apoyada")   # ver cajas_freecad.CLOSURES
-LIP_CLOSURES = ("friccion", "labio", "imanes")
+CLOSURES = ("friccion", "labio", "imanes", "tornillos", "insertos", "apoyada")   # ver cajas_freecad
+LIP_CLOSURES = ("friccion", "labio", "imanes", "tornillos", "insertos")
+SCREW_CLOSURES = ("tornillos", "insertos")
+SCREW_HEADS = ("cilindrica", "avellanada")
+# Igual que cajas_freecad.SCREWS: (paso libre en la tapa, agujero en la base sin inserto, cabeza
+# cilíndrica Ø y alto, cabeza avellanada Ø, agujero del inserto Ø y largo del inserto).
+SCREWS = {
+    "M2": (2.4, 2.0, 4.3, 2.3, 4.4, 3.2, 4.0),
+    "M2.5": (2.9, 2.5, 5.0, 2.8, 5.4, 3.6, 5.0),
+    "M3": (3.4, 3.0, 6.0, 3.3, 6.4, 4.0, 5.7),
+    "M4": (4.5, 4.0, 7.5, 4.3, 8.4, 5.4, 8.1),
+}
+_SCREW_FLOOR = 0.8
 VIEWS = ("separada", "cerrada", "explosionada")
 AXES = ("X", "Y", "Z")
 # Medida de placa que dimensiona la caja con STEP (ver cajas_freecad.fit_board).
@@ -50,6 +61,8 @@ DEFAULTS = {
     "lid_depth": 3.0, "split_height": 0.0, "closure": "friccion", "tongue_height": 1.8,
     "clearance": 0.15, "rib_interference": 0.02,
     "magnet_diameter": 6.0, "magnet_height": 2.0, "magnet_clearance": 0.15,
+    "screw_size": "M3", "screw_length": 10.0, "screw_head": "cilindrica",
+    "screw_hole": 0.0, "insert_depth": 0.0,
     "supports": [], "ports": [], "view": "separada", "export_stl": True,
     "export_step": False,
 }
@@ -84,6 +97,11 @@ LABELS = {
     "magnet_diameter": "Diámetro del imán",
     "magnet_height": "Alto del imán",
     "magnet_clearance": "Holgura del imán",
+    "screw_size": "Métrica del tornillo",
+    "screw_length": "Largo del tornillo",
+    "screw_head": "Cabeza del tornillo",
+    "screw_hole": "Agujero en la base",
+    "insert_depth": "Largo del inserto",
     "tongue_height": "Altura de lengüeta",
     "clearance": "Juego del encaje",
     "rib_interference": "Interferencia de nervios",
@@ -232,6 +250,9 @@ def normalize(data):
     c["board_fit"] = _choice(c["board_fit"], BOARD_FITS, LABELS["board_fit"], "board_fit")
     c["closure"] = _choice(c["closure"], CLOSURES, LABELS["closure"], "closure")
     c["board_rest"] = _choice(c["board_rest"], BOARD_RESTS, LABELS["board_rest"], "board_rest")
+    c["screw_size"] = _choice(c["screw_size"], tuple(SCREWS), LABELS["screw_size"], "screw_size", str.upper)
+    c["screw_head"] = _choice(str(c["screw_head"]).replace("í", "i"), SCREW_HEADS, LABELS["screw_head"],
+                              "screw_head")
     c["view"] = _choice(c["view"], VIEWS, LABELS["view"], "view")
     c["rotation"] = c["rotation"] % 360.0
     if c["rotation"] == 360.0:  # -1e-20 % 360 da 360.0
@@ -368,6 +389,29 @@ def corner_wall(c):
     return min(w, math.sqrt(2)*(w + ri - r) + r - ri)
 
 
+def screw_fit(c, d=None):
+    """Igual que cajas_freecad.screw_fit: rosca útil, profundidad del agujero y largos de
+    tornillo admisibles (min_len, max_len) para la configuración."""
+    d = d or dimensions(c)
+    clear, pilot, cb_d, cb_h, csk_d, ins_d, ins_l = SCREWS[c["screw_size"]]
+    if c["closure"] == "insertos":
+        ins_d = c["screw_hole"] or ins_d
+    else:
+        pilot = c["screw_hole"] or pilot
+    ins_l = c["insert_depth"] or ins_l
+    recess = (csk_d - clear)/2 if c["screw_head"] == "avellanada" else cb_h
+    grip = d["outer_z"] - d["seam"] - recess
+    max_depth = d["seam"] - _SCREW_FLOOR
+    if c["closure"] == "insertos":
+        hole_d, min_eng = ins_d, 0.75*ins_l
+    else:
+        hole_d, min_eng = pilot, 2*float(c["screw_size"][1:])
+    eng = c["screw_length"] - grip
+    depth = eng + 1.0 if c["closure"] == "tornillos" else max(ins_l, eng) + 0.5
+    return {"grip": grip, "hole_d": hole_d, "ins_l": ins_l, "eng": eng, "depth": depth,
+            "max_depth": max_depth, "min_len": grip + min_eng, "max_len": grip + max_depth - 0.5}
+
+
 def warnings(c):
     """Avisos (no errores) de una configuración ya validada."""
     out = []
@@ -375,6 +419,10 @@ def warnings(c):
         out.append("Holgura lateral 0: la placa queda ajustada contra las paredes (montaje a presión).")
     elif c["margin"] < TIGHT_MARGIN:
         out.append(f"Holgura lateral de {_fmt(c['margin'])} mm: la placa queda muy justa.")
+    if c["closure"] in SCREW_CLOSURES:
+        f = screw_fit(c)
+        out.append(f"Tornillos {c['screw_size']}: agujero en la base Ø{_fmt(f['hole_d'])} mm; sirven de "
+                   f"{_fmt(round(f['min_len'], 1))} a {_fmt(round(f['max_len'], 1))} mm de largo.")
     return out
 
 
@@ -449,6 +497,18 @@ def validate(c):
             _err("magnet_height", f"no cabe bajo la unión (necesita {_fmt(round(pocket, 2))} mm de base).")
         if skirt + c["lid"] < pocket:
             _err("magnet_height", "no cabe en la tapa: sube el techo o baja la unión.")
+    if c["closure"] in SCREW_CLOSURES:
+        for key in ("screw_hole", "insert_depth"):
+            if c[key] < 0:
+                _err(key, "no puede ser negativo (0 = valor típico).")
+        f = screw_fit(c, d)
+        if f["grip"] < 1.0:
+            _err("screw_head", "la tapa es demasiado baja para alojar la cabeza: baja la unión o sube el techo.")
+        if c["closure"] == "insertos" and f["ins_l"] + 0.5 > f["max_depth"]:
+            _err("insert_depth", "no cabe bajo la unión: sube la unión o usa un inserto más corto.")
+        if not f["min_len"] - 1e-9 <= c["screw_length"] or f["depth"] > f["max_depth"] + 1e-9:
+            _err("screw_length", f"debe estar entre {_fmt(round(f['min_len'], 1))} y "
+                                 f"{_fmt(round(f['max_len'], 1))} mm con esta caja.")
     if c["board_rest"] != "ninguno" and not 0.5 <= c["rest_width"] <= 10:
         _err("rest_width", "debe estar entre 0,5 y 10 mm.")
     # Soportes: dentro del interior (con las esquinas redondeadas) y bajo la unión.

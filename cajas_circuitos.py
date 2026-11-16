@@ -82,7 +82,8 @@ VISTAS = [("Separada (impresión)", "separada"), ("Cerrada", "cerrada"),
 CAMPOS_NUM = ["board_x", "board_y", "board_z", "pcb_offset", "rotation",
               "margin", "bottom_gap", "top_gap", "wall", "floor", "lid", "radius",
               "rest_width", "lid_depth", "split_height", "tongue_height", "clearance",
-              "rib_interference", "magnet_diameter", "magnet_height", "magnet_clearance"]
+              "rib_interference", "magnet_diameter", "magnet_height", "magnet_clearance",
+              "screw_length", "screw_hole", "insert_depth"]
 FORMAS = [("Rectangular", "rectangular"), ("Redondeada", "redondeada"),
           ("Circular (Ø = ancho)", "circular"), ("Ovalada", "ovalada")]
 FORMA_TXT = {k: t for t, k in FORMAS}
@@ -980,6 +981,8 @@ def crear_app():
                 ("Lengüetas cortas con nervios de fricción", "friccion"),
                 ("Labio continuo a presión", "labio"),
                 ("Imanes en las esquinas + labio de alineación", "imanes"),
+                ("Tornillos autorroscantes (directo al plástico)", "tornillos"),
+                ("Tornillos con insertos roscados", "insertos"),
                 ("Tapa apoyada (sin retención)", "apoyada")))
             g = self._tarjeta(f, "Unión entre base y tapa")
             self._fila(g, 0, "split_height", "Altura de la unión", "Desde la base exterior; 0 = automática.")
@@ -1008,6 +1011,27 @@ def crear_app():
                        "Por lado; 0,1–0,2 a presión.")
             self._ayuda(self._sec_imanes, "4 en la base y 4 en la tapa, en torres que sobresalen en las "
                         "esquinas. Colócalos de modo que cada par se atraiga.", fila=3)
+            self._sec_tornillos = ttk.LabelFrame(cont, text="Tornillos", padding=(12, 6, 12, 10))
+            t = self._sec_tornillos
+            t.columnconfigure(0, minsize=170)
+            t.columnconfigure(3, weight=1)
+            ttk.Label(t, text="Métrica").grid(row=0, column=0, sticky="w", pady=3)
+            ttk.Combobox(t, textvariable=self._var("screw_size", "M3"), values=tuple(M.SCREWS),
+                         state="readonly", width=7).grid(row=0, column=1, sticky="w", pady=3)
+            self._fila(t, 1, "screw_length", "Largo del tornillo", "Bajo la cabeza.")
+            ttk.Label(t, text="Cabeza").grid(row=2, column=0, sticky="w", pady=3)
+            cab = ttk.Frame(t)
+            cab.grid(row=2, column=1, columnspan=3, sticky="w")
+            self._var("screw_head", "cilindrica")
+            for txt, val in (("Cilíndrica (allen)", "cilindrica"), ("Avellanada", "avellanada")):
+                ttk.Radiobutton(cab, text=txt, value=val, variable=self.v["screw_head"]).pack(side="left",
+                                                                                          padx=(0, 12))
+            self._fila(t, 3, "screw_hole", "Agujero en la base", "0 = típico de la métrica.")
+            self._e_inserto = self._fila(t, 4, "insert_depth", "Largo del inserto", "0 = típico.")
+            self.lbl_tornillo = ttk.Label(t, text="", style="Help.TLabel", wraplength=480, justify="left")
+            self.lbl_tornillo.grid(row=5, column=0, columnspan=4, sticky="w", pady=(4, 0))
+            self._ayuda(t, "Cuatro tornillos en torres de esquina (no quitan espacio a la placa): pasan "
+                        "por la tapa y se anclan en la base.", fila=6)
             self._ayuda(f, "El ajuste real depende de la impresora: imprime una prueba y ajusta el juego.",
                         estilo="Warn.TLabel")
             self.v["closure"].trace_add("write", lambda *_: self._secciones_cierre())
@@ -1016,12 +1040,41 @@ def crear_app():
         def _secciones_cierre(self):
             """Muestra solo las secciones que aplican al cierre elegido."""
             cierre = self.v["closure"].get()
-            for sec in (self._sec_encaje, self._sec_imanes):
+            for sec in (self._sec_encaje, self._sec_imanes, self._sec_tornillos):
                 sec.pack_forget()
             if cierre in M.LIP_CLOSURES:
                 self._sec_encaje.pack(fill="x", pady=(0, 10))
             if cierre == "imanes":
                 self._sec_imanes.pack(fill="x", pady=(0, 10))
+            if cierre in M.SCREW_CLOSURES:
+                self._sec_tornillos.pack(fill="x", pady=(0, 10))
+                # El largo del inserto solo aplica con insertos.
+                self._e_inserto.configure(state="normal" if cierre == "insertos" else "disabled")
+            self._pista_tornillo()
+
+        def _pista_tornillo(self, cfg=None):
+            """Medidas que resultan para los tornillos: agujero en la base y largos que sirven."""
+            if not hasattr(self, "lbl_tornillo"):
+                return
+            try:
+                cfg = cfg or M.config_from(dict(self._crudo(), step_path=""))
+                if cfg["closure"] not in M.SCREW_CLOSURES:
+                    self.lbl_tornillo.configure(text="")
+                    return
+                f = M.screw_fit(cfg)
+            except Exception:
+                self.lbl_tornillo.configure(text="")
+                return
+            en = I.actual() == "en"
+            inserto = cfg["closure"] == "insertos"
+            if en:
+                txt = (f"Base hole Ø{fmt(f['hole_d'])} mm" + (f" for a {fmt(f['ins_l'])} mm insert" if inserto else "")
+                       + f". Usable screw length: {fmt(round(f['min_len'], 1))} to {fmt(round(f['max_len'], 1))} mm.")
+            else:
+                txt = (f"Agujero en la base Ø{fmt(f['hole_d'])} mm" + (f" para un inserto de {fmt(f['ins_l'])} mm"
+                       if inserto else "") + f". Sirven tornillos de {fmt(round(f['min_len'], 1))} a "
+                       f"{fmt(round(f['max_len'], 1))} mm.")
+            self.lbl_tornillo.configure(text=txt)
 
         def _tabla(self, padre, columnas, alto=6):
             """Tabla con filas alternadas y barra de desplazamiento."""
@@ -1452,6 +1505,8 @@ def crear_app():
             c["export_stl"] = bool(self.var_stl.get())
             c["export_step"] = bool(self.var_step.get())
             c["board_rest"] = self.v["board_rest"].get()
+            c["screw_size"] = self.v["screw_size"].get()
+            c["screw_head"] = self.v["screw_head"].get()
             c["hold_down"] = bool(self.var_pisadores.get())
             c["supports"] = [dict(s) for s in self.supports]
             c["ports"] = [dict(p) for p in self.ports]
@@ -1564,6 +1619,7 @@ def crear_app():
                 self.lbl_val.configure(text=T("✓ Configuración válida (las colisiones reales se comprueban "
                                          "al calcular en FreeCAD)."), style="Ok.TLabel")
             self._pista_puerto(cfg, d)
+            self._pista_tornillo(cfg)
             self._programar_auto(cfg)
             self._estado_vista()
 
@@ -1623,6 +1679,8 @@ def crear_app():
                 self.var_stl.set(bool(c.get("export_stl", True)))
                 self.var_step.set(bool(c.get("export_step", False)))
                 self.v["board_rest"].set(c.get("board_rest", "esquinas"))
+                self.v["screw_size"].set(c.get("screw_size", "M3"))
+                self.v["screw_head"].set(c.get("screw_head", "cilindrica"))
                 self.var_pisadores.set(bool(c.get("hold_down", False)))
                 self.supports = [dict(s) for s in c.get("supports", [])]
                 self.ports = [dict(p) for p in c.get("ports", [])]

@@ -163,5 +163,37 @@ if Path(ECDL).is_file():
 else:
     print("SKIP detectar: no existe", ECDL)
 
+def tornillos():
+    """Cierres con tornillos autorroscantes e insertos: agujeros, cabezas y largos."""
+    for cierre in ("tornillos", "insertos"):
+        for tam, largo in (("M3", 10), ("M4", 12)):
+            for cabeza in ("cilindrica", "avellanada"):
+                r = construir(closure=cierre, screw_size=tam, screw_length=largo, screw_head=cabeza)
+                c, d = r["config"], r["dimensions"]
+                f = CF.screw_fit(c, dict(d, ceiling=d["ceiling"]))
+                x, y = CF._corner_towers(d, f["tower_r"])[0][0]
+                seam, total = d["seam"], d["outer_z"]
+                # El agujero de la base está vacío hasta su profundidad y tiene el diámetro pedido.
+                hueco = CF.Part.makeCylinder(f["hole_d"]/2 - 0.02, f["depth"] - 0.05, CF.V(x, y, seam - f["depth"] + 0.02))
+                pared = CF.Part.makeCylinder(f["hole_d"]/2 + 0.05, 1, CF.V(x, y, seam - f["depth"] / 2))
+                ok_base = hueco.common(r["base"]).Volume < 1e-6 and pared.common(r["base"]).Volume > 1e-4
+                # La tapa deja pasar el tornillo y aloja la cabeza.
+                paso = CF.Part.makeCylinder(f["clear"]/2 - 0.02, total - seam - 0.1, CF.V(x, y, seam + 0.05))
+                cab = CF.Part.makeCylinder(f["head_d"]/2 - 0.3, 0.2, CF.V(x, y, total - 0.25))
+                ok_tapa = paso.common(r["lid"]).Volume < 1e-6 and cab.common(r["lid"]).Volume < 1e-6
+                check(f"{cierre} {tam}×{largo} {cabeza}", ok_base and ok_tapa and r["base"].isValid()
+                      and r["lid"].isValid(), (round(f["hole_d"], 2), round(f["depth"], 2), round(r["t"], 2)))
+    r = construir(closure="insertos", screw_size="M4", screw_length=12)
+    check("M4 con inserto: agujero Ø5,4", abs(CF.screw_fit(r["config"], r["dimensions"])["hole_d"] - 5.4) < 1e-9)
+    r = construir(closure="tornillos", screw_size="M4", screw_length=12)
+    check("M4 sin inserto: agujero Ø4", abs(CF.screw_fit(r["config"], r["dimensions"])["hole_d"] - 4.0) < 1e-9)
+    for largo, texto in ((4, "corto"), (40, "largo")):
+        try:
+            CF.build(dict(M.DEFAULTS, closure="tornillos", screw_length=largo))
+            check(f"tornillo demasiado {texto} rechazado", False)
+        except CF.CajaError as ex:
+            check(f"tornillo demasiado {texto} rechazado", texto in str(ex), ex)
+prueba("tornillos", tornillos)
+
 print("FALLOS:", fallos)
 sys.exit(1 if fallos else 0)

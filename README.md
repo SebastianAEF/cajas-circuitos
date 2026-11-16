@@ -20,7 +20,7 @@ La interfaz está en **español o inglés**, con tema claro u oscuro.
 - **Ajuste a presión**: holgura lateral desde 0 mm (la placa entra ajustada).
   - **Apoyos** bajo el PCB, en las esquinas o como repisa, para que no flote ni se incline.
   - **Pisadores** opcionales en la tapa.
-- **Cierres**: lengüetas con nervios de fricción, labio continuo a presión, **imanes** cilíndricos en torres de esquina, o tapa apoyada.
+- **Cierres**: lengüetas con nervios de fricción, labio continuo a presión, **imanes** cilíndricos en torres de esquina, **tornillos autorroscantes** directo al plástico, **tornillos con insertos roscados**, o tapa apoyada.
   - La **altura de la unión** entre base y tapa se puede elegir, por ejemplo a la altura de los conectores.
 - **Validación real** en FreeCAD:
   - colisiones placa–caja y placa–soportes;
@@ -86,6 +86,13 @@ A la izquierda de «Nuevo». Todo se aplica al momento y se recuerda entre sesio
 - *Lengüetas cortas*: dos por cara, biseladas, con juego por lado y nervios de fricción.
 - *Labio continuo*: un labio a lo largo de cada cara, con nervios cada 25 mm. Las aberturas lo recortan.
 - *Imanes*: 4 en la base y 4 en la tapa, en torres de esquina por fuera de la cavidad, con diámetro, alto y holgura configurables y un labio de alineación. Las torres sobresalen unos milímetros (el aviso dice cuánto). Coloca los imanes de modo que cada par se atraiga.
+- *Tornillos autorroscantes* y *tornillos con insertos roscados*: cuatro tornillos en torres de esquina (por fuera de la cavidad) que pasan por la tapa y se anclan en la base. También llevan labio de alineación.
+  - **Métrica** M2, M2.5, M3 o M4, y **cabeza** cilíndrica (allen, con alojamiento) o avellanada (a ras).
+  - **Agujero en la base**:
+    - sin inserto, el diámetro nominal (M4 → 4 mm), porque el agujero impreso sale algo menor y el tornillo hace su rosca;
+    - con inserto, el del inserto (M2 3,2 · M2.5 3,6 · M3 4,0 · M4 5,4 mm), con su largo típico.
+    - Ambos se pueden cambiar (0 = típico).
+  - El **largo del tornillo** se valida: la aplicación indica qué largos sirven con esa caja (con rosca suficiente y sin perforar el piso).
 - *Tapa apoyada*: sin retención.
 - **Altura de la unión** (0 = automática). «A la altura de las aberturas laterales» la coloca a la altura de los conectores: sus aberturas quedan mitad en la base y mitad en la tapa.
 

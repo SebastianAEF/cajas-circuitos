@@ -192,6 +192,17 @@ _registrar({
     "Buscar": "Search", "Ninguno": "None", "Solo sugeridos": "Suggested only", "Componente": "Component",
     "Centro X, Y": "Centre X, Y", "Planta": "Footprint", "Altura sup.": "Top height", "Abertura": "Opening",
     "Circular": "Circular", "Sale por pared": "Exits through wall", "Crear aberturas": "Create openings",
+    # Tornillos
+    "Tornillos autorroscantes (directo al plástico)": "Self-tapping screws (straight into the plastic)",
+    "Tornillos con insertos roscados": "Screws with threaded inserts", "Tornillos": "Screws",
+    "Métrica": "Size", "Largo del tornillo": "Screw length", "Bajo la cabeza.": "Under the head.",
+    "Cabeza": "Head", "Cilíndrica (allen)": "Socket head", "Avellanada": "Countersunk",
+    "Agujero en la base": "Hole in the base", "0 = típico de la métrica.": "0 = typical for the size.",
+    "Largo del inserto": "Insert length", "0 = típico.": "0 = typical.",
+    "Cuatro tornillos en torres de esquina (no quitan espacio a la placa): pasan por la tapa y se "
+    "anclan en la base.":
+        "Four screws in corner towers (they take no room from the board): they go through the lid "
+        "and anchor in the base.",
     # Colores
     "Colores en FreeCAD": "FreeCAD colors", "Placa (sin colores del STEP)": "Board (without STEP colors)",
     "Cambiar…": "Change…", "Usar los colores del STEP para la placa (si los trae)":

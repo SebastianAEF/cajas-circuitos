@@ -44,8 +44,23 @@ TIGHT_MARGIN = 0.2         # holgura lateral por debajo de la cual la placa qued
 CORNER_FACTOR = 1 - 1/math.sqrt(2)
 # Cierres: lengüetas cortas con nervios, labio continuo, imanes (con labio de
 # alineación) o tapa apoyada.
-CLOSURES = ("friccion", "labio", "imanes", "apoyada")
-LIP_CLOSURES = ("friccion", "labio", "imanes")
+CLOSURES = ("friccion", "labio", "imanes", "tornillos", "insertos", "apoyada")
+LIP_CLOSURES = ("friccion", "labio", "imanes", "tornillos", "insertos")
+# Tornillos que pasan por la tapa y se anclan en la base: directamente en el plástico
+# (autorroscantes, agujero piloto) o en insertos roscados de latón colocados en caliente.
+SCREW_CLOSURES = ("tornillos", "insertos")
+SCREW_HEADS = ("cilindrica", "avellanada")
+# Métrica: (paso libre en la tapa, agujero en la base sin inserto (= diámetro nominal: el
+# agujero impreso sale algo menor y el tornillo hace su rosca), cabeza cilíndrica Ø y alto del
+# alojamiento, cabeza avellanada Ø, agujero del inserto Ø y largo del inserto).
+SCREWS = {
+    "M2": (2.4, 2.0, 4.3, 2.3, 4.4, 3.2, 4.0),
+    "M2.5": (2.9, 2.5, 5.0, 2.8, 5.4, 3.6, 5.0),
+    "M3": (3.4, 3.0, 6.0, 3.3, 6.4, 4.0, 5.7),
+    "M4": (4.5, 4.0, 7.5, 4.3, 8.4, 5.4, 8.1),
+}
+SCREW_FLOOR = 0.8          # material mínimo bajo el agujero de la base
+SCREW_TOWER_WALL = 1.2     # material alrededor de la cabeza y del agujero
 MAGNET_WALL = 1.0          # material alrededor del alojamiento del imán
 MAGNET_DEPTH_EXTRA = 0.2   # el alojamiento es 0,2 mm más hondo que el imán
 MAGNET_FLOOR = 0.6         # material mínimo bajo el alojamiento
@@ -692,6 +707,21 @@ def validate_build(c, d):
             raise CajaError(f"La unión está demasiado baja para alojar el imán (mínimo {_f(pocket)} mm).")
         if c["lid_depth"] + c["lid"] < pocket:
             raise CajaError("La tapa es demasiado baja para alojar el imán: sube el techo o baja la unión.")
+    if c["closure"] in SCREW_CLOSURES:
+        if c["screw_head"] not in SCREW_HEADS:
+            raise CajaError("Cabeza de tornillo no reconocida (usa cilindrica o avellanada).")
+        f = screw_fit(c, d)
+        if f["grip"] < 1.0 - EPS:
+            raise CajaError("La tapa es demasiado baja para alojar la cabeza del tornillo: baja la unión "
+                            "o sube el techo.")
+        if c["closure"] == "insertos" and f["ins_l"] + 0.5 > f["max_depth"] + EPS:
+            raise CajaError(f"La unión está demasiado baja para el inserto de {_f(f['ins_l'])} mm.")
+        if c["screw_length"] < f["min_len"] - EPS:
+            raise CajaError(f"Tornillo de {_f(c['screw_length'])} mm demasiado corto: usa entre "
+                            f"{_f(f['min_len'])} y {_f(f['max_len'])} mm.")
+        if f["depth"] > f["max_depth"] + EPS:
+            raise CajaError(f"Tornillo de {_f(c['screw_length'])} mm demasiado largo: usa entre "
+                            f"{_f(f['min_len'])} y {_f(f['max_len'])} mm.")
     if c.get("board_rest", "ninguno") not in BOARD_RESTS:
         raise CajaError("Apoyo de placa no reconocido (usa " + ", ".join(BOARD_RESTS) + ").")
     if c.get("board_rest", "ninguno") != "ninguno" and not 0.5 <= c["rest_width"] <= 10:
@@ -799,10 +829,13 @@ def _prepare(config):
         c[key] = _num(c, key)
     # Opciones posteriores: valores por defecto si la macro o el proyecto no las traen.
     for key, default in (("split_height", 0.0), ("rest_width", 2.0), ("magnet_diameter", 6.0),
-                         ("magnet_height", 2.0), ("magnet_clearance", 0.15), ("pcb_offset", 0.0)):
+                         ("magnet_height", 2.0), ("magnet_clearance", 0.15), ("pcb_offset", 0.0),
+                         ("screw_length", 10.0), ("screw_hole", 0.0), ("insert_depth", 0.0)):
         c[key] = _num(c, key, default)
     c["closure"] = str(c.get("closure", "friccion")).lower().replace("fricción", "friccion")
     c["board_rest"] = str(c.get("board_rest", "ninguno")).lower()
+    c["screw_size"] = str(c.get("screw_size", "M3")).upper()
+    c["screw_head"] = str(c.get("screw_head", "cilindrica")).lower().replace("í", "i")
     c["hold_down"] = bool(c.get("hold_down", False))
     c["supports"] = [{k: _num(s, k) for k in ("x", "y", "height", "diameter", "hole")}
                      for s in (c.get("supports") or [])]
@@ -969,6 +1002,85 @@ def hold_down_posts(c, d, frame, comps):
     return out, notes
 
 
+def _corner_towers(d, rt):
+    """Centros y cilindros de las cuatro torres de esquina de radio rt (base y tapa).
+
+    Cada torre queda fuera de la cavidad (su centro está a rt·√2 de la esquina
+    interior), así no quita espacio a la placa. Devuelve (centros, torres_base,
+    torres_tapa, saliente) con saliente = cuánto sobresalen de la pared en X e Y."""
+    delta = rt/math.sqrt(2)
+    seam, total = d["seam"], d["outer_z"]
+    centers, tb, tl = [], [], []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x, y = sx*(d["inner_x"]/2 + delta), sy*(d["inner_y"]/2 + delta)
+            centers.append((x, y))
+            tb.append(Part.makeCylinder(rt, seam, V(x, y, 0)))
+            tl.append(Part.makeCylinder(rt, total - seam, V(x, y, seam)))
+    wall = (d["outer_x"] - d["inner_x"])/2
+    return centers, tb, tl, max(0.0, delta + rt - wall)
+
+
+def screw_spec(c):
+    """Medidas del tornillo elegido. screw_hole (Ø del agujero de la base) e insert_depth
+    valen 0 para usar los valores típicos de la tabla."""
+    if c["screw_size"] not in SCREWS:
+        raise CajaError("Métrica de tornillo no reconocida (usa " + ", ".join(SCREWS) + ").")
+    clear, pilot, cb_d, cb_h, csk_d, ins_d, ins_l = SCREWS[c["screw_size"]]
+    if c["closure"] == "insertos":
+        ins_d = c["screw_hole"] or ins_d
+    else:
+        pilot = c["screw_hole"] or pilot
+    return {"nominal": float(c["screw_size"][1:]), "clear": clear, "pilot": pilot, "cb_d": cb_d,
+            "cb_h": cb_h, "csk_d": csk_d, "ins_d": ins_d, "ins_l": c["insert_depth"] or ins_l}
+
+
+def screw_fit(c, d):
+    """Cómo queda el tornillo: material de la tapa bajo la cabeza (grip), rosca útil en la
+    base, profundidad del agujero y largos de tornillo admisibles (min_len, max_len)."""
+    sp = screw_spec(c)
+    lid_h = d["outer_z"] - d["seam"]
+    if c["screw_head"] == "avellanada":
+        recess = (sp["csk_d"] - sp["clear"])/2          # cono de 90°: la cabeza queda a ras
+    else:
+        recess = sp["cb_h"]
+    grip = lid_h - recess
+    max_depth = d["seam"] - SCREW_FLOOR
+    if c["closure"] == "insertos":
+        hole_d = sp["ins_d"]
+        min_eng = 0.75*sp["ins_l"]                    # que el tornillo tome casi todo el inserto
+    else:
+        hole_d = sp["pilot"]
+        min_eng = 2*sp["nominal"]                     # dos diámetros de rosca en el plástico
+    max_eng = max_depth - 0.5
+    eng = c["screw_length"] - grip
+    depth = eng + 1.0 if c["closure"] == "tornillos" else max(sp["ins_l"], eng) + 0.5
+    head_d = sp["csk_d"] if c["screw_head"] == "avellanada" else sp["cb_d"]
+    return dict(sp, recess=recess, grip=grip, hole_d=hole_d, eng=eng, depth=depth, max_depth=max_depth,
+                min_len=grip + min_eng, max_len=grip + max_eng, head_d=head_d,
+                tower_r=max(head_d/2 + SCREW_TOWER_WALL, hole_d/2 + SCREW_TOWER_WALL + 0.4))
+
+
+def screw_towers(c, d):
+    """Torres de esquina con el paso del tornillo en la tapa (con alojamiento para la
+    cabeza) y el agujero piloto o del inserto en la base. Devuelve (torres_base,
+    torres_tapa, huecos_base, huecos_tapa, saliente, ajuste)."""
+    f = screw_fit(c, d)
+    centers, tb, tl, out = _corner_towers(d, f["tower_r"])
+    seam, total = d["seam"], d["outer_z"]
+    hb, hl = [], []
+    for x, y in centers:
+        hl.append(Part.makeCylinder(f["clear"]/2, total - seam + 2, V(x, y, seam - 1)))
+        if c["screw_head"] == "avellanada":
+            h = f["recess"]
+            hl.append(Part.makeCone(f["clear"]/2, f["csk_d"]/2, h, V(x, y, total - h)))
+            hl.append(Part.makeCylinder(f["csk_d"]/2, 1, V(x, y, total)))
+        else:
+            hl.append(Part.makeCylinder(f["cb_d"]/2, f["recess"] + 1, V(x, y, total - f["recess"])))
+        hb.append(Part.makeCylinder(f["hole_d"]/2, f["depth"] + 1, V(x, y, seam - f["depth"])))
+    return tb, tl, hb, hl, out, f
+
+
 def magnet_towers(c, d):
     """Torres de esquina con alojamiento para imanes cilíndricos.
 
@@ -977,19 +1089,12 @@ def magnet_towers(c, d):
     huecos_tapa, saliente) con saliente = cuánto sobresalen de la caja en X e Y."""
     md, mh, mc = c["magnet_diameter"], c["magnet_height"], c["magnet_clearance"]
     rp = md/2 + mc
-    rt = rp + MAGNET_WALL
-    delta = rt/math.sqrt(2)
-    seam, total = d["seam"], d["outer_z"]
+    seam = d["seam"]
     depth = mh + MAGNET_DEPTH_EXTRA
-    tb, tl, hb, hl = [], [], [], []
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            x, y = sx*(d["inner_x"]/2 + delta), sy*(d["inner_y"]/2 + delta)
-            tb.append(Part.makeCylinder(rt, seam, V(x, y, 0)))
-            tl.append(Part.makeCylinder(rt, total - seam, V(x, y, seam)))
-            hb.append(Part.makeCylinder(rp, depth + 1, V(x, y, seam - depth)))
-            hl.append(Part.makeCylinder(rp, depth + 1, V(x, y, seam - 1)))
-    return tb, tl, hb, hl, max(0.0, delta + rt - c["wall"])
+    centers, tb, tl, out = _corner_towers(d, rp + MAGNET_WALL)
+    hb = [Part.makeCylinder(rp, depth + 1, V(x, y, seam - depth)) for x, y in centers]
+    hl = [Part.makeCylinder(rp, depth + 1, V(x, y, seam - 1)) for x, y in centers]
+    return tb, tl, hb, hl, out
 
 
 def _slice_distance(a, b, z):
@@ -1192,6 +1297,25 @@ def build(config, cache=None):
         warnings.append(f"Imanes Ø{_f(c['magnet_diameter'])} × {_f(c['magnet_height'])} mm: 8 en total "
                         f"(4 en la base y 4 en la tapa), en torres de esquina que sobresalen "
                         f"{_f(out)} mm. Colócalos de modo que cada par se atraiga.")
+    elif c["closure"] in SCREW_CLOSURES:
+        towers_base, towers_lid, magnet_holes_base, magnet_holes_lid, out, sf = screw_towers(c, dd)
+        for i, k in enumerate(cutters, 1):
+            if any(_bb_overlap(k, t, MIN_STRIP) for t in towers_base + towers_lid):
+                raise CajaError(f"Abertura {i}: choca con la torre de un tornillo en una esquina. "
+                                "Aléjala de la esquina.")
+        fit.update(screw_towers=4, screw_protrusion=out, screw_engagement=sf["eng"],
+                   screw_hole_depth=sf["depth"])
+        cabeza = "avellanada" if c["screw_head"] == "avellanada" else "cilíndrica"
+        if c["closure"] == "insertos":
+            warnings.append(f"Insertos {c['screw_size']}: agujero Ø{_f(sf['ins_d'])} × {_f(sf['depth'])} mm en la "
+                            f"base (inserto de {_f(sf['ins_l'])} mm, colócalo con el soldador). Tornillos "
+                            f"{c['screw_size']} × {_f(c['screw_length'])} mm de cabeza {cabeza}; sirven de "
+                            f"{_f(sf['min_len'])} a {_f(sf['max_len'])} mm.")
+        else:
+            warnings.append(f"Tornillos autorroscantes {c['screw_size']} × {_f(c['screw_length'])} mm de cabeza "
+                            f"{cabeza}: agujero Ø{_f(sf['pilot'])} × {_f(sf['depth'])} mm en la base; rosca "
+                            f"útil {_f(sf['eng'])} mm (sirven de {_f(sf['min_len'])} a {_f(sf['max_len'])} mm).")
+        warnings.append(f"Torres de los tornillos en las esquinas: sobresalen {_f(out)} mm.")
     support_solids = []
     for i, s in enumerate(c["supports"], 1):
         x, y, h, r, hole = s["x"], s["y"], s["height"], s["diameter"]/2, s["hole"]/2

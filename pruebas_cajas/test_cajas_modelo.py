@@ -107,7 +107,7 @@ class TestNormalizacion(Base):
         c = cm.config_from(cfg(up_axis="y", closure="Fricción", view="CERRADA"))
         self.assertEqual((c["up_axis"], c["closure"], c["view"]), ("Y", "friccion", "cerrada"))
         self.assertFalla("Eje vertical", up_axis="W")
-        self.assertFalla("Cierre", closure="tornillos")
+        self.assertFalla("Cierre", closure="pegamento")
         self.assertFalla("Vista", view="otra")
         self.assertFalla("Cara", ports=[{"side": "arriba", "u": 0, "v": 5, "width": 2, "height": 2}])
 
@@ -249,7 +249,7 @@ class TestOpcionesNuevas(unittest.TestCase):
         for cierre in ("friccion", "labio", "imanes", "apoyada"):
             self.assertEqual(cm.config_from(cfg(closure=cierre))["closure"], cierre)
         with self.assertRaises(cm.ConfigError):
-            cm.config_from(cfg(closure="tornillos"))
+            cm.config_from(cfg(closure="pegamento"))
         with self.assertRaises(cm.ConfigError) as ctx:
             cm.config_from(cfg(closure="imanes", magnet_height=11))
         self.assertIn("Alto del imán", str(ctx.exception))
@@ -481,3 +481,33 @@ class TestAberturasTapa(unittest.TestCase):
                                     self.d, 0.5)
         self.assertEqual(ports, [])
         self.assertIn("fuera", notas[0])
+
+
+class TestTornillos(unittest.TestCase):
+    def test_agujeros_tipicos_y_propios(self):
+        c = cm.config_from(cfg(closure="tornillos", screw_size="M4", screw_length=12))
+        self.assertEqual(cm.screw_fit(c)["hole_d"], 4.0)          # sin inserto: diámetro nominal
+        c = cm.config_from(cfg(closure="insertos", screw_size="M4", screw_length=12))
+        self.assertEqual(cm.screw_fit(c)["hole_d"], 5.4)          # inserto M4
+        c = cm.config_from(cfg(closure="tornillos", screw_size="m3", screw_hole="2,8"))
+        self.assertEqual((c["screw_size"], cm.screw_fit(c)["hole_d"]), ("M3", 2.8))
+
+    def test_largo_del_tornillo(self):
+        c = cm.config_from(cfg(closure="tornillos", screw_size="M3", screw_length=10))
+        f = cm.screw_fit(c)
+        self.assertLess(f["min_len"], 10)
+        self.assertGreater(f["max_len"], 10)
+        with self.assertRaises(cm.ConfigError) as ctx:
+            cm.config_from(cfg(closure="tornillos", screw_size="M3", screw_length=4))
+        self.assertIn("Largo del tornillo", str(ctx.exception))
+        with self.assertRaises(cm.ConfigError):
+            cm.config_from(cfg(closure="insertos", screw_length=40))
+        with self.assertRaises(cm.ConfigError):
+            cm.config_from(cfg(closure="tornillos", screw_size="M5"))
+        self.assertTrue(any("sirven de" in a for a in cm.warnings(c)))
+
+    def test_tablas_iguales_en_geometria_y_validacion(self):
+        import cajas_freecad as cf                                # importable sin FreeCAD
+        self.assertEqual(cm.SCREWS, cf.SCREWS)
+        self.assertEqual(cm.SCREW_CLOSURES, cf.SCREW_CLOSURES)
+        self.assertEqual(cm.CLOSURES, cf.CLOSURES)
