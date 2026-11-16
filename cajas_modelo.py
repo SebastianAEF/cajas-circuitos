@@ -42,6 +42,9 @@ SCREWS = {
     "M4": (4.5, 4.0, 7.5, 4.3, 8.4, 5.4, 8.1),
 }
 _SCREW_FLOOR = 0.8
+_SCREW_TOWER_WALL = 1.2
+_MAGNET_WALL = 1.0
+ANCHOR_PLACES = ("pared", "torres")     # imanes/tornillos dentro de la pared o en torres
 VIEWS = ("separada", "cerrada", "explosionada")
 AXES = ("X", "Y", "Z")
 # Medida de placa que dimensiona la caja con STEP (ver cajas_freecad.fit_board).
@@ -62,7 +65,7 @@ DEFAULTS = {
     "clearance": 0.15, "rib_interference": 0.02,
     "magnet_diameter": 6.0, "magnet_height": 2.0, "magnet_clearance": 0.15,
     "screw_size": "M3", "screw_length": 10.0, "screw_head": "cilindrica",
-    "screw_hole": 0.0, "insert_depth": 0.0,
+    "screw_hole": 0.0, "insert_depth": 0.0, "anchor_place": "pared",
     "supports": [], "ports": [], "view": "separada", "export_stl": True,
     "export_step": False,
 }
@@ -102,6 +105,7 @@ LABELS = {
     "screw_head": "Cabeza del tornillo",
     "screw_hole": "Agujero en la base",
     "insert_depth": "Largo del inserto",
+    "anchor_place": "Ubicación de imanes/tornillos",
     "tongue_height": "Altura de lengüeta",
     "clearance": "Juego del encaje",
     "rib_interference": "Interferencia de nervios",
@@ -253,6 +257,7 @@ def normalize(data):
     c["screw_size"] = _choice(c["screw_size"], tuple(SCREWS), LABELS["screw_size"], "screw_size", str.upper)
     c["screw_head"] = _choice(str(c["screw_head"]).replace("í", "i"), SCREW_HEADS, LABELS["screw_head"],
                               "screw_head")
+    c["anchor_place"] = _choice(c["anchor_place"], ANCHOR_PLACES, LABELS["anchor_place"], "anchor_place")
     c["view"] = _choice(c["view"], VIEWS, LABELS["view"], "view")
     c["rotation"] = c["rotation"] % 360.0
     if c["rotation"] == 360.0:  # -1e-20 % 360 da 360.0
@@ -273,8 +278,30 @@ def normalize(data):
     return c
 
 
+def anchor_wall(c):
+    """Pared efectiva (igual que cajas_freecad.anchor_wall): con imanes o tornillos dentro de
+    las esquinas, la pared se engruesa lo necesario para alojarlos."""
+    if c.get("anchor_place", "pared") != "pared":
+        return c["wall"]
+    if c["closure"] == "imanes":
+        rt = c["magnet_diameter"]/2 + c["magnet_clearance"] + _MAGNET_WALL
+    elif c["closure"] in SCREW_CLOSURES and c.get("screw_size") in SCREWS:
+        _clear, pilot, cb_d, _cb_h, csk_d, ins_d, _ins_l = SCREWS[c["screw_size"]]
+        hole = (c["screw_hole"] or ins_d) if c["closure"] == "insertos" else (c["screw_hole"] or pilot)
+        head = csk_d if c["screw_head"] == "avellanada" else cb_d
+        rt = max(head/2 + _SCREW_TOWER_WALL, hole/2 + _SCREW_TOWER_WALL + 0.4)
+    else:
+        return c["wall"]
+    a = rt/math.sqrt(2)
+    need = a + rt
+    if c["radius"] > rt:
+        need = max(need, c["radius"] + a - (c["radius"] - rt)/math.sqrt(2))
+    return max(c["wall"], math.ceil(need*20)/20)
+
+
 def dimensions(c):
     """Medidas derivadas (mismas fórmulas que cajas_freecad.build)."""
+    wall = anchor_wall(c)
     ix = c["board_x"] + 2*c["margin"]
     iy = c["board_y"] + 2*c["margin"]
     iz = c["bottom_gap"] + c["board_z"] + c["top_gap"]
@@ -282,7 +309,7 @@ def dimensions(c):
     # Unión: la altura elegida, o techo − falda de la tapa.
     seam = c["split_height"] if c.get("split_height", 0) > 0 else ceiling - c["lid_depth"]
     return {"inner_x": ix, "inner_y": iy, "inner_z": iz,
-            "outer_x": ix + 2*c["wall"], "outer_y": iy + 2*c["wall"],
+            "outer_x": ix + 2*wall, "outer_y": iy + 2*wall,
             "outer_z": ceiling + c["lid"], "ceiling": ceiling,
             "seam": seam, "lid_skirt": ceiling - seam}
 
@@ -419,6 +446,9 @@ def warnings(c):
         out.append("Holgura lateral 0: la placa queda ajustada contra las paredes (montaje a presión).")
     elif c["margin"] < TIGHT_MARGIN:
         out.append(f"Holgura lateral de {_fmt(c['margin'])} mm: la placa queda muy justa.")
+    if anchor_wall(c) > c["wall"] + 1e-9:
+        que = "los imanes" if c["closure"] == "imanes" else "los tornillos"
+        out.append(f"Pared engrosada a {_fmt(anchor_wall(c))} mm para alojar {que} dentro de las esquinas.")
     if c["closure"] in SCREW_CLOSURES:
         f = screw_fit(c)
         out.append(f"Tornillos {c['screw_size']}: agujero en la base Ø{_fmt(f['hole_d'])} mm; sirven de "

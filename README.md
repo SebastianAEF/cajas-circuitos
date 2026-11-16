@@ -85,15 +85,19 @@ A la izquierda de «Nuevo». Todo se aplica al momento y se recuerda entre sesio
 
 - *Lengüetas cortas*: dos por cara, biseladas, con juego por lado y nervios de fricción.
 - *Labio continuo*: un labio a lo largo de cada cara, con nervios cada 25 mm. Las aberturas lo recortan.
-- *Imanes*: 4 en la base y 4 en la tapa, en torres de esquina por fuera de la cavidad, con diámetro, alto y holgura configurables y un labio de alineación. Las torres sobresalen unos milímetros (el aviso dice cuánto). Coloca los imanes de modo que cada par se atraiga.
-- *Tornillos autorroscantes* y *tornillos con insertos roscados*: cuatro tornillos en torres de esquina (por fuera de la cavidad) que pasan por la tapa y se anclan en la base. También llevan labio de alineación.
+- *Imanes*: 4 en la base y 4 en la tapa, con diámetro, alto y holgura configurables y un labio de alineación. Coloca los imanes de modo que cada par se atraiga.
+- *Tornillos autorroscantes* y *tornillos con insertos roscados*: cuatro tornillos en las esquinas que pasan por la tapa y se anclan en la base. También llevan labio de alineación.
   - **Métrica** M2, M2.5, M3 o M4, y **cabeza** cilíndrica (allen, con alojamiento) o avellanada (a ras).
   - **Agujero en la base**:
     - sin inserto, el diámetro nominal (M4 → 4 mm), porque el agujero impreso sale algo menor y el tornillo hace su rosca;
     - con inserto, el del inserto (M2 3,2 · M2.5 3,6 · M3 4,0 · M4 5,4 mm), con su largo típico.
     - Ambos se pueden cambiar (0 = típico).
   - El **largo del tornillo** se valida: la aplicación indica qué largos sirven con esa caja (con rosca suficiente y sin perforar el piso).
+- **Ubicación de imanes y tornillos**:
+  - *Dentro de las esquinas de la pared* (por defecto): la caja queda con su exterior limpio, y la pared se engruesa automáticamente lo justo para alojarlos (por ejemplo, 7,1 mm con imanes de 6 mm). La interfaz muestra la pared que resulta.
+  - *Torres por fuera de las esquinas*: la pared conserva su grosor y las torres sobresalen unos milímetros.
 - *Tapa apoyada*: sin retención.
+- Si una abertura cruza una lengüeta o el labio, los **recorta** (con su ranura en la tapa) y se avisa; el cálculo no se detiene. Sobre una abertura abierta hasta la unión no queda labio ni ranura, para que baje la lengüeta de la tapa que la cierra.
 - **Altura de la unión** (0 = automática). «A la altura de las aberturas laterales» la coloca a la altura de los conectores: sus aberturas quedan mitad en la base y mitad en la tapa.
 
 ### Aberturas
@@ -136,6 +140,7 @@ El visor es una ventana de FreeCAD aparte que la aplicación lanza y administra.
   - peticiones y respuestas JSON en un directorio privado de la sesión, con token, id y plazo de caducidad;
   - acciones cerradas: estado, cargar placa, calcular, vista, exportar, captura, detectar, componentes y detener;
   - no se abre ningún puerto de red y nada de lo recibido se ejecuta como código.
+- **Herrajes**: con imanes, tornillos o insertos, el visor los muestra como cilindros simples (insertos en bronce, tornillos e imanes en plateado). Los de la tapa la acompañan en las vistas separada y explosionada. La casilla «Herrajes» de «Mostrar» los oculta. No se exportan.
 - **Estado**: «Conectado» solo aparece tras una respuesta real del visor.
   - Si cierras la ventana de FreeCAD, «Reconectar» abre otro visor.
   - Nunca hay dos visores a la vez.

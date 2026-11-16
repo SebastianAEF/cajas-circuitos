@@ -57,7 +57,8 @@ class Puente:
         self.estado_doc = {}          # estado de sync_document (incluye board_key)
         self.result = None            # último resultado de build
         self.cfg_clave = None         # JSON de la configuración del último build
-        self.vista = {"vista": "cerrada", "visible": {"base": True, "lid": True, "board": True},
+        self.vista = {"vista": "cerrada", "visible": {"base": True, "lid": True, "board": True,
+                                                      "hardware": True},
                       "transparencia": {"base": 0, "lid": 0},
                       "colores": {"step": True}}   # #RRGGBB por pieza; step: colores del STEP
         self.colores_placa = None     # colores por cara de la placa mostrada (del STEP)

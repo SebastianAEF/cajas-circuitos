@@ -60,6 +60,9 @@ SCREWS = {
     "M4": (4.5, 4.0, 7.5, 4.3, 8.4, 5.4, 8.1),
 }
 SCREW_FLOOR = 0.8          # material mínimo bajo el agujero de la base
+# Imanes y tornillos: dentro de las esquinas de la pared (que se engruesa lo necesario) o en
+# torres que sobresalen de las esquinas (pared delgada).
+ANCHOR_PLACES = ("pared", "torres")
 SCREW_TOWER_WALL = 1.2     # material alrededor de la cabeza y del agujero
 MAGNET_WALL = 1.0          # material alrededor del alojamiento del imán
 MAGNET_DEPTH_EXTRA = 0.2   # el alojamiento es 0,2 mm más hondo que el imán
@@ -707,6 +710,8 @@ def validate_build(c, d):
             raise CajaError(f"La unión está demasiado baja para alojar el imán (mínimo {_f(pocket)} mm).")
         if c["lid_depth"] + c["lid"] < pocket:
             raise CajaError("La tapa es demasiado baja para alojar el imán: sube el techo o baja la unión.")
+    if c.get("anchor_place", "pared") not in ANCHOR_PLACES:
+        raise CajaError("Ubicación de imanes/tornillos no reconocida (usa pared o torres).")
     if c["closure"] in SCREW_CLOSURES:
         if c["screw_head"] not in SCREW_HEADS:
             raise CajaError("Cabeza de tornillo no reconocida (usa cilindrica o avellanada).")
@@ -835,6 +840,7 @@ def _prepare(config):
     c["closure"] = str(c.get("closure", "friccion")).lower().replace("fricción", "friccion")
     c["board_rest"] = str(c.get("board_rest", "ninguno")).lower()
     c["screw_size"] = str(c.get("screw_size", "M3")).upper()
+    c["anchor_place"] = str(c.get("anchor_place", "pared")).lower()
     c["screw_head"] = str(c.get("screw_head", "cilindrica")).lower().replace("í", "i")
     c["hold_down"] = bool(c.get("hold_down", False))
     c["supports"] = [{k: _num(s, k) for k in ("x", "y", "height", "diameter", "hole")}
@@ -1002,7 +1008,33 @@ def hold_down_posts(c, d, frame, comps):
     return out, notes
 
 
-def _corner_towers(d, rt):
+def anchor_radius(c):
+    """Radio del material alrededor del eje de un imán o tornillo (None si el cierre no lleva)."""
+    if c["closure"] == "imanes":
+        return c["magnet_diameter"]/2 + c["magnet_clearance"] + MAGNET_WALL
+    if c["closure"] in SCREW_CLOSURES:
+        return screw_tower_radius(c)
+    return None
+
+
+def anchor_wall(c):
+    """Pared necesaria para alojar imanes o tornillos dentro de las esquinas.
+
+    El eje va en la diagonal de la esquina, a rt/√2 de la esquina interior en X y en Y
+    (así su material no entra en la cavidad), y el círculo de radio rt debe caber dentro
+    de la esquina exterior redondeada. Devuelve la pared elegida si ya basta."""
+    rt = anchor_radius(c)
+    if rt is None or c.get("anchor_place", "pared") != "pared":
+        return c["wall"]
+    a = rt/math.sqrt(2)
+    need = a + rt
+    radius = c["radius"]
+    if radius > rt:
+        need = max(need, radius + a - (radius - rt)/math.sqrt(2))
+    return max(c["wall"], math.ceil(need*20)/20)
+
+
+def _corner_towers(d, rt, solids=True):
     """Centros y cilindros de las cuatro torres de esquina de radio rt (base y tapa).
 
     Cada torre queda fuera de la cavidad (su centro está a rt·√2 de la esquina
@@ -1015,10 +1047,11 @@ def _corner_towers(d, rt):
         for sy in (-1, 1):
             x, y = sx*(d["inner_x"]/2 + delta), sy*(d["inner_y"]/2 + delta)
             centers.append((x, y))
-            tb.append(Part.makeCylinder(rt, seam, V(x, y, 0)))
-            tl.append(Part.makeCylinder(rt, total - seam, V(x, y, seam)))
+            if solids:
+                tb.append(Part.makeCylinder(rt, seam, V(x, y, 0)))
+                tl.append(Part.makeCylinder(rt, total - seam, V(x, y, seam)))
     wall = (d["outer_x"] - d["inner_x"])/2
-    return centers, tb, tl, max(0.0, delta + rt - wall)
+    return centers, tb, tl, (max(0.0, delta + rt - wall) if solids else 0.0)
 
 
 def screw_spec(c):
@@ -1033,6 +1066,14 @@ def screw_spec(c):
         pilot = c["screw_hole"] or pilot
     return {"nominal": float(c["screw_size"][1:]), "clear": clear, "pilot": pilot, "cb_d": cb_d,
             "cb_h": cb_h, "csk_d": csk_d, "ins_d": ins_d, "ins_l": c["insert_depth"] or ins_l}
+
+
+def screw_tower_radius(c):
+    """Radio del material alrededor del eje del tornillo: cabeza y agujero de la base."""
+    sp = screw_spec(c)
+    head_d = sp["csk_d"] if c["screw_head"] == "avellanada" else sp["cb_d"]
+    hole_d = sp["ins_d"] if c["closure"] == "insertos" else sp["pilot"]
+    return max(head_d/2 + SCREW_TOWER_WALL, hole_d/2 + SCREW_TOWER_WALL + 0.4)
 
 
 def screw_fit(c, d):
@@ -1058,7 +1099,7 @@ def screw_fit(c, d):
     head_d = sp["csk_d"] if c["screw_head"] == "avellanada" else sp["cb_d"]
     return dict(sp, recess=recess, grip=grip, hole_d=hole_d, eng=eng, depth=depth, max_depth=max_depth,
                 min_len=grip + min_eng, max_len=grip + max_eng, head_d=head_d,
-                tower_r=max(head_d/2 + SCREW_TOWER_WALL, hole_d/2 + SCREW_TOWER_WALL + 0.4))
+                tower_r=screw_tower_radius(c))
 
 
 def screw_towers(c, d):
@@ -1066,7 +1107,7 @@ def screw_towers(c, d):
     cabeza) y el agujero piloto o del inserto en la base. Devuelve (torres_base,
     torres_tapa, huecos_base, huecos_tapa, saliente, ajuste)."""
     f = screw_fit(c, d)
-    centers, tb, tl, out = _corner_towers(d, f["tower_r"])
+    centers, tb, tl, out = _corner_towers(d, f["tower_r"], c.get("anchor_place", "pared") == "torres")
     seam, total = d["seam"], d["outer_z"]
     hb, hl = [], []
     for x, y in centers:
@@ -1081,6 +1122,42 @@ def screw_towers(c, d):
     return tb, tl, hb, hl, out, f
 
 
+COLOR_PLATA = (0.76, 0.77, 0.80)       # tornillos e imanes en el visor
+COLOR_BRONCE = (0.80, 0.55, 0.25)      # insertos roscados
+
+
+def hardware_shapes(c, d):
+    """Imanes, tornillos e insertos simplificados (cilindros y conos) en posición de cierre,
+    solo para verlos en el visor; no se exportan. Devuelve {"base": [(forma, color)],
+    "lid": [(forma, color)]}: los de la tapa la acompañan en las vistas."""
+    out = {"base": [], "lid": []}
+    rt = anchor_radius(c)
+    if rt is None:
+        return out
+    seam, total = d["seam"], d["outer_z"]
+    centers = _corner_towers(d, rt, False)[0]
+    if c["closure"] == "imanes":
+        r, h = c["magnet_diameter"]/2, c["magnet_height"]
+        for x, y in centers:
+            out["base"].append((Part.makeCylinder(r, h, V(x, y, seam - h)), COLOR_PLATA))
+            out["lid"].append((Part.makeCylinder(r, h, V(x, y, seam)), COLOR_PLATA))
+        return out
+    f = screw_fit(c, d)
+    shank = f["nominal"]/2
+    top = total - f["recess"]                      # apoyo de la cabeza
+    for x, y in centers:
+        if c["closure"] == "insertos":
+            out["base"].append((Part.makeCylinder(f["ins_d"]/2 + 0.1, f["ins_l"], V(x, y, seam - f["ins_l"])),
+                                COLOR_BRONCE))
+        out["lid"].append((Part.makeCylinder(shank, c["screw_length"], V(x, y, top - c["screw_length"])),
+                           COLOR_PLATA))
+        if c["screw_head"] == "avellanada":
+            out["lid"].append((Part.makeCone(shank, f["csk_d"]/2 - 0.2, f["recess"], V(x, y, top)), COLOR_PLATA))
+        else:
+            out["lid"].append((Part.makeCylinder(f["cb_d"]/2 - 0.25, f["cb_h"] - 0.3, V(x, y, top)), COLOR_PLATA))
+    return out
+
+
 def magnet_towers(c, d):
     """Torres de esquina con alojamiento para imanes cilíndricos.
 
@@ -1091,7 +1168,7 @@ def magnet_towers(c, d):
     rp = md/2 + mc
     seam = d["seam"]
     depth = mh + MAGNET_DEPTH_EXTRA
-    centers, tb, tl, out = _corner_towers(d, rp + MAGNET_WALL)
+    centers, tb, tl, out = _corner_towers(d, rp + MAGNET_WALL, c.get("anchor_place", "pared") == "torres")
     hb = [Part.makeCylinder(rp, depth + 1, V(x, y, seam - depth)) for x, y in centers]
     hl = [Part.makeCylinder(rp, depth + 1, V(x, y, seam - 1)) for x, y in centers]
     return tb, tl, hb, hl, out
@@ -1224,11 +1301,12 @@ def _lips(c, d, cutters, warnings):
             r0 = rect(center, seglen/2, tk/2)
             sx0, sy0, sx1, sy1 = rect(center, seglen/2 + gap, tk/2 + gap)
             slot_bb = (sx0, sy0, seam - 0.5, sx1, sy1, seam + slot_top)
-            # Lengüetas cortas: si una abertura toca el tramo (o queda a menos de MIN_STRIP),
-            # se omite entero. El labio continuo lo recortan las aberturas.
-            if not continuous and any(_bb_overlap(slot_bb, k, MIN_STRIP) for k in cutters):
-                warnings.append(f"Lengüeta omitida por una abertura en la cara {side}.")
-                continue
+            # Si una abertura cruza la lengüeta o el labio, la abertura los recorta (y a su
+            # ranura en la tapa); el resto del tramo sigue sujetando.
+            if any(_bb_overlap(slot_bb, k, 0.0) for k in cutters):
+                aviso = f"Una abertura recorta {'el labio' if continuous else 'una lengüeta'} en la cara {side}."
+                if aviso not in warnings:
+                    warnings.append(aviso)
             lips.append(ruled_solid([(r0, seam), (r0, seam + straight),
                                      (_shrink(r0, bev, bev), seam + th)]))
             slots.append(Part.makeBox(sx1 - sx0, sy1 - sy0, slot_top + 0.5, V(sx0, sy0, seam - 0.5)))
@@ -1243,8 +1321,6 @@ def _lips(c, d, cutters, warnings):
                         continue
                     flush = rect(rc, 0.6, tk/2)
                     ribs.append(ruled_solid([(full, seam), (full, seam + straight*0.5), (flush, seam + straight)]))
-    if len(lips) < 4:
-        raise CajaError("Las aberturas dejan menos de cuatro lengüetas. Muévelas o usa tapa apoyada.")
     return lips, slots, ribs, fit
 
 
@@ -1263,6 +1339,8 @@ def build(config, cache=None):
     board = board_local.translated(V(0, 0, c["floor"] + c["bottom_gap"]))
     c["board_fit"] = info["fit"]
     c.update(zip(("board_x", "board_y", "board_z"), size))
+    pared_pedida = c["wall"]
+    c["wall"] = anchor_wall(c)          # imanes o tornillos dentro de las esquinas
     ix, iy = size[0] + 2*c["margin"], size[1] + 2*c["margin"]
     iz = c["bottom_gap"] + size[2] + c["top_gap"]
     ox, oy = ix + 2*c["wall"], iy + 2*c["wall"]
@@ -1275,6 +1353,10 @@ def build(config, cache=None):
              ceiling=ceiling, lid_skirt=ceiling - seam)
     dd = d
     warnings = list(info["warnings"]) + validate_build(c, dd)
+    if c["wall"] > pared_pedida + EPS:
+        que = "los imanes" if c["closure"] == "imanes" else "los tornillos"
+        warnings.append(f"Pared engrosada de {_f(pared_pedida)} a {_f(c['wall'])} mm para alojar {que} "
+                        "dentro de las esquinas.")
     radius, wall = c["radius"], c["wall"]
     inner_radius = inner_corner_radius(c)
     walls = rounded_box(ox, oy, seam, radius).cut(rounded_box(ix, iy, iz + 1, inner_radius, c["floor"]))
@@ -1290,18 +1372,22 @@ def build(config, cache=None):
     if c["closure"] == "imanes":
         towers_base, towers_lid, magnet_holes_base, magnet_holes_lid, out = magnet_towers(c, dd)
         for i, k in enumerate(cutters, 1):
-            if any(_bb_overlap(k, t, MIN_STRIP) for t in towers_base + towers_lid):
-                raise CajaError(f"Abertura {i}: choca con la torre de un imán en una esquina. "
+            if any(_bb_overlap(k, t, MIN_STRIP) for t in towers_base + towers_lid + magnet_holes_base
+                   + magnet_holes_lid):
+                raise CajaError(f"Abertura {i}: choca con el alojamiento de un imán en una esquina. "
                                 "Aléjala de la esquina.")
         fit.update(magnet_towers=4, magnet_protrusion=out)
         warnings.append(f"Imanes Ø{_f(c['magnet_diameter'])} × {_f(c['magnet_height'])} mm: 8 en total "
-                        f"(4 en la base y 4 en la tapa), en torres de esquina que sobresalen "
-                        f"{_f(out)} mm. Colócalos de modo que cada par se atraiga.")
+                        f"(4 en la base y 4 en la tapa), "
+                        + (f"en torres de esquina que sobresalen {_f(out)} mm. " if out > 0 else
+                           "dentro de las esquinas de la pared. ")
+                        + "Colócalos de modo que cada par se atraiga.")
     elif c["closure"] in SCREW_CLOSURES:
         towers_base, towers_lid, magnet_holes_base, magnet_holes_lid, out, sf = screw_towers(c, dd)
         for i, k in enumerate(cutters, 1):
-            if any(_bb_overlap(k, t, MIN_STRIP) for t in towers_base + towers_lid):
-                raise CajaError(f"Abertura {i}: choca con la torre de un tornillo en una esquina. "
+            if any(_bb_overlap(k, t, MIN_STRIP) for t in towers_base + towers_lid + magnet_holes_base
+                   + magnet_holes_lid):
+                raise CajaError(f"Abertura {i}: choca con el agujero de un tornillo en una esquina. "
                                 "Aléjala de la esquina.")
         fit.update(screw_towers=4, screw_protrusion=out, screw_engagement=sf["eng"],
                    screw_hole_depth=sf["depth"])
@@ -1315,7 +1401,8 @@ def build(config, cache=None):
             warnings.append(f"Tornillos autorroscantes {c['screw_size']} × {_f(c['screw_length'])} mm de cabeza "
                             f"{cabeza}: agujero Ø{_f(sf['pilot'])} × {_f(sf['depth'])} mm en la base; rosca "
                             f"útil {_f(sf['eng'])} mm (sirven de {_f(sf['min_len'])} a {_f(sf['max_len'])} mm).")
-        warnings.append(f"Torres de los tornillos en las esquinas: sobresalen {_f(out)} mm.")
+        if out > 0:
+            warnings.append(f"Torres de los tornillos en las esquinas: sobresalen {_f(out)} mm.")
     support_solids = []
     for i, s in enumerate(c["supports"], 1):
         x, y, h, r, hole = s["x"], s["y"], s["height"], s["diameter"]/2, s["hole"]/2
@@ -1343,8 +1430,20 @@ def build(config, cache=None):
     if lips or support_solids or rests or towers_base:
         plain_base = plain_base.multiFuse(lips + support_solids + rests + towers_base)
     lateral_cutters = [k for k, p in zip(cutters, c["ports"]) if p["side"] != "tapa"]
+    # Sobre una abertura abierta hasta la unión baja la lengüeta de la tapa que la cierra: ahí
+    # no puede quedar labio ni lengüeta de la base (chocarían al montar la tapa) ni ranura en
+    # la tapa (dejaría la lengüeta colgando de dos paredes finas).
+    over = []
+    if lips:
+        h = c["tongue_height"] + 1.5
+        for p in c["ports"]:
+            if p["side"] != "tapa" and p.get("to_seam") and p["v"] - p["height"]/2 < seam - EPS:
+                over.append(port_cutter(dict(p, v=seam + h/2 - 0.5, height=h, shape="rectangular",
+                                             to_seam=False), dd, wall))
+    if over:
+        slots = [sl.cut(Part.makeCompound(over)) for sl in slots]
     if lateral_cutters or magnet_holes_base:
-        plain_base = plain_base.cut(Part.makeCompound(lateral_cutters + magnet_holes_base))
+        plain_base = plain_base.cut(Part.makeCompound(lateral_cutters + magnet_holes_base + over))
     plain_base = plain_base.removeSplitter()
     base = plain_base.multiFuse(ribs).removeSplitter() if ribs else plain_base
     if towers_lid:
@@ -1398,6 +1497,7 @@ def build(config, cache=None):
         fit["measured_clearance"] = _slice_distance(lips[0], lid, zc)
     fit.update(rests=len(rests), hold_down_posts=len(posts), port_tabs=len(tabs))
     return {"base": base, "lid": lid, "board": board, "config": c, "dimensions": d,
+            "hardware": hardware_shapes(c, dd),
             "tongues": len(lips), "warnings": warnings, "collision": collision,
             "collision_method": collision_method, "fit_interference": fit_interference,
             "crossed_faces": col["faces"] if col["shell"] > 0.001 else [],
@@ -1730,6 +1830,26 @@ def create_document(config, result=None, hidden=False, fit_view=True):
 # ---------------------------------------------------------------------------
 
 SYNC_NAMES = {"base": "CajaBase", "lid": "CajaTapa", "board": "CajaPlaca", "params": "CajaParametros"}
+HARDWARE_NAMES = {"base": "CajaHerrajesBase", "lid": "CajaHerrajesTapa"}
+
+
+def _apply_hardware(doc, result, view, created):
+    """Crea, actualiza o quita los herrajes (imanes, tornillos, insertos) del visor."""
+    hw = result.get("hardware") or {}
+    for key, name in HARDWARE_NAMES.items():
+        piezas = hw.get(key) or []
+        obj = doc.getObject(name)
+        if not piezas:
+            if obj is not None:
+                doc.removeObject(name)
+            continue
+        label = "Herrajes de la base" if key == "base" else "Herrajes de la tapa"
+        obj = _feature(doc, name, label, created)
+        obj.Shape = Part.makeCompound([s for s, _ in piezas])
+        obj.Placement = lid_placement(result, view) if key == "lid" else App.Placement()
+        vo = _view_object(obj)
+        if vo is not None:
+            vo.DiffuseColor = [color for s, color in piezas for _ in s.Faces]
 
 
 def _neutral(shape):
@@ -1800,12 +1920,18 @@ def _apply_board(doc, shape, board_key, state, offset_z, created, step=True, col
 
 
 def _apply_display(doc, visible, transparency):
-    """Visibilidad y transparencia de base, tapa y placa."""
+    """Visibilidad y transparencia de base, tapa y placa. Los herrajes se ven si se piden
+    («hardware») y si su pieza (base o tapa) está visible."""
     names = {"base": SYNC_NAMES["base"], "lid": SYNC_NAMES["lid"], "board": SYNC_NAMES["board"]}
     for key, flag in (visible or {}).items():
         obj = doc.getObject(names.get(key, ""))
         if obj is not None:
             obj.Visibility = bool(flag)
+    hw = bool((visible or {}).get("hardware", True))
+    for key, name in HARDWARE_NAMES.items():
+        obj, pieza = doc.getObject(name), doc.getObject(SYNC_NAMES[key])
+        if obj is not None:
+            obj.Visibility = hw and (pieza is None or bool(pieza.Visibility))
     for key, value in (transparency or {}).items():
         obj = doc.getObject(names.get(key, ""))
         vo = _view_object(obj) if obj is not None else None
@@ -1823,8 +1949,8 @@ def show_board(doc, shape, board_key, state, offset_z=0.0, colors=None):
     obj, reassigned = _apply_board(doc, shape, board_key, state, offset_z, created,
                                    step=not str(board_key).startswith("manual:"), colors=colors)
     obj.Visibility = True
-    for key in ("base", "lid"):
-        other = doc.getObject(SYNC_NAMES[key])
+    for name in (SYNC_NAMES["base"], SYNC_NAMES["lid"], *HARDWARE_NAMES.values()):
+        other = doc.getObject(name)
         if other is not None:
             other.Visibility = False
     if state is not None:
@@ -1856,6 +1982,7 @@ def sync_document(doc, result, view="cerrada", visible=None, transparency=None, 
             vo = _view_object(obj)
             if vo is not None:
                 vo.ShapeColor = color
+    _apply_hardware(doc, result, view, created)
     step = bool(result["config"].get("step_path"))
     _, out["board_reassigned"] = _apply_board(doc, result["board_local"], result["board_key"], state,
                                               result["board_offset_z"], created, step,
@@ -1884,6 +2011,9 @@ def apply_view(doc, result, view, visible=None, transparency=None):
     if lid is None or board is None:
         raise CajaError("El documento no tiene la caja sincronizada; llama antes a sync_document.")
     lid.Placement = lid_placement(result, view)
+    hw_lid = doc.getObject(HARDWARE_NAMES["lid"])
+    if hw_lid is not None:
+        hw_lid.Placement = lid.Placement
     board.Placement = App.Placement(V(0, 0, result["board_offset_z"]), App.Rotation())
     base = doc.getObject(SYNC_NAMES["base"])
     if base is not None:

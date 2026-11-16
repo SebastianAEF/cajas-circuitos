@@ -86,7 +86,7 @@ def cierres():
         r = construir(closure=cierre)
         check(f"cierre {cierre}", r["base"].isValid() and r["lid"].isValid(),
               (r["tongues"], round(r["fit_interference"], 3), round(r["t"], 2)))
-    r = construir(closure="imanes", magnet_diameter=5, magnet_height=2)
+    r = construir(closure="imanes", magnet_diameter=5, magnet_height=2, anchor_place="torres")
     bb = r["base"].BoundBox
     check("imanes: torres sobresalen en las esquinas", bb.XLength > r["dimensions"]["outer_x"] + 1,
           (bb.XLength, r["dimensions"]["outer_x"], r["fit"].get("magnet_protrusion")))
@@ -194,6 +194,45 @@ def tornillos():
         except CF.CajaError as ex:
             check(f"tornillo demasiado {texto} rechazado", texto in str(ex), ex)
 prueba("tornillos", tornillos)
+
+def anclajes_en_pared():
+    """Imanes y tornillos dentro de las esquinas de la pared: no sobresalen y caben."""
+    for kw in ({"closure": "imanes"}, {"closure": "tornillos"},
+               {"closure": "insertos", "screw_size": "M4", "screw_length": 12}):
+        r = construir(**kw)
+        d, c = r["dimensions"], r["config"]
+        bb = r["base"].BoundBox
+        rt = CF.anchor_radius(c)
+        x, y = CF._corner_towers(d, rt, False)[0][0]
+        seam = d["seam"]
+        if c["closure"] == "imanes":
+            pieza = CF.Part.makeCylinder(c["magnet_diameter"]/2, c["magnet_height"], CF.V(x, y, seam - c["magnet_height"]))
+        else:
+            f = CF.screw_fit(c, d)
+            pieza = CF.Part.makeCylinder(f["hole_d"]/2 - 0.02, f["depth"] - 0.05, CF.V(x, y, seam - f["depth"] + 0.02))
+        cavidad = CF.Part.makeBox(d["inner_x"], d["inner_y"], 1, CF.V(-d["inner_x"]/2, -d["inner_y"]/2, seam - 2))
+        check(f"{kw['closure']} en la pared: no sobresale, cabe y no invade el interior",
+              abs(bb.XLength - d["outer_x"]) < 0.01 and pieza.common(r["base"]).Volume < 1e-6
+              and r["base"].common(cavidad).Volume < 1e-6 and c["wall"] > 3,
+              (round(bb.XLength, 2), d["outer_x"], c["wall"]))
+    r = construir(closure="imanes", anchor_place="torres")
+    check("imanes en torres: la pared no cambia", r["config"]["wall"] == 3.0
+          and r["base"].BoundBox.XLength > r["dimensions"]["outer_x"] + 1)
+prueba("anclajes_en_pared", anclajes_en_pared)
+
+
+def aberturas_y_ensamble():
+    """Aberturas hasta la unión con labio, imanes y tornillos: se recortan, no fallan."""
+    if not Path(ECDL).is_file():
+        print("SKIP aberturas_y_ensamble: no existe", ECDL)
+        return
+    for cierre in ("friccion", "labio", "imanes", "tornillos"):
+        r0 = construir(step_path=ECDL, margin=0, closure=cierre)
+        ports = CF.detect_ports(r0, 0.5, to_seam=True)["ports"]
+        r = construir(step_path=ECDL, margin=0, closure=cierre, ports=ports)
+        check(f"aberturas hasta la unión + {cierre}", r["base"].isValid() and r["lid"].isValid()
+              and r["fit"]["port_tabs"] == 5 and not r["crossed_faces"], r["warnings"][:3])
+prueba("aberturas_y_ensamble", aberturas_y_ensamble)
 
 print("FALLOS:", fallos)
 sys.exit(1 if fallos else 0)

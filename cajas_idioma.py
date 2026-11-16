@@ -203,6 +203,9 @@ _registrar({
     "anclan en la base.":
         "Four screws in corner towers (they take no room from the board): they go through the lid "
         "and anchor in the base.",
+    "Ubicación de imanes o tornillos": "Magnet or screw placement", "Herrajes": "Hardware",
+    "Dentro de las esquinas de la pared (la pared se engruesa)": "Inside the wall corners (the wall gets thicker)",
+    "Torres por fuera de las esquinas (pared delgada)": "Towers outside the corners (thin wall)",
     # Colores
     "Colores en FreeCAD": "FreeCAD colors", "Placa (sin colores del STEP)": "Board (without STEP colors)",
     "Cambiar…": "Change…", "Usar los colores del STEP para la placa (si los trae)":

@@ -295,3 +295,28 @@ Hubo un respaldo antes de editar: `respaldo_antes_tornillos_20261116_013100/`.
   - `prueba_puente_freecad`: 16/16;
   - `prueba_gui`: 61/61.
   - Captura revisada: insertos M3 con cabeza avellanada.
+
+## Ajuste posterior: anclajes en la pared, aberturas contra el ensamble y herrajes visibles (2026-11-16)
+
+Hubo un respaldo antes de editar: `respaldo_antes_anclajes_20261116_015251/`.
+
+- **Imanes y tornillos dentro de las esquinas de la pared** (`anchor_place`, por defecto `pared`).
+  - `anchor_wall` engruesa la pared lo justo para que el agujero y su material quepan en la esquina sin invadir la cavidad ni salir por la esquina exterior redondeada: 7,1 mm con imanes de 6 mm, 7,2 con tornillos M3 y 8,5 con insertos M4.
+  - `torres` conserva el comportamiento anterior.
+  - El cálculo está duplicado en `cajas_modelo.anchor_wall`, para que medidas y validación coincidan.
+- **Aberturas y ensamble:**
+  - Antes, una abertura que tocaba una lengüeta corta la eliminaba, y con menos de cuatro el cálculo daba error. Ahora la abertura recorta la lengüeta o el labio (y su ranura) y solo se avisa.
+  - Con aberturas abiertas hasta la unión y cierres de labio, imanes o tornillos, el cálculo fallaba con «la tapa colisiona con la base durante la inserción»: el labio pasaba sobre la ranura de la abertura. Ahora sobre esas aberturas no queda labio en la base ni ranura en la tapa.
+  - Reproducido y comprobado con la placa del usuario.
+- **Herrajes en el visor:**
+  - `hardware_shapes`: imanes, tornillos (vástago y cabeza cilíndrica o cónica) e insertos como cilindros simples, en los objetos CajaHerrajesBase y CajaHerrajesTapa (bronce los insertos, plateado el resto).
+  - Siguen a su pieza en las vistas, se ocultan con la casilla «Herrajes» (`visible.hardware`) y no se exportan.
+- **Pruebas:**
+  - unittest: 85 OK;
+  - `prueba_opciones_freecad`: OK, con nuevas comprobaciones de anclajes en la pared (no sobresalen, caben y no invaden el interior) y de aberturas hasta la unión con los cuatro cierres;
+  - `prueba_freecad_real`: 17/17 (se adaptó «abertura bloquea lengüetas» al recorte);
+  - `prueba_cache_freecad`: 10/10;
+  - `prueba_regresiones_freecad`: OK;
+  - `prueba_puente_freecad`: 16/16;
+  - `prueba_gui`: 61/61.
+  - Capturas revisadas: insertos y tornillos en vista explosionada, imanes en las esquinas.

@@ -304,10 +304,14 @@ def t_port_blocks_tongue():
     p = {"side": "frente", "u": free*0.53, "v": d["seam"], "width": 6, "height": 4}
     r = cf.build(cfg(ports=[p]))
     check_pieces(r)
-    assert r["tongues"] == 7 and any("Lengüeta omitida" in w for w in r["warnings"])
+    # La abertura recorta la lengüeta (no la elimina ni impide calcular) y se avisa.
+    assert r["tongues"] == 8 and any("recorta una lengüeta" in w for w in r["warnings"])
     many = [{"side": s, "u": 0, "v": d["seam"], "width": 60, "height": 4} for s in ("frente", "fondo", "izquierda")]
-    msg = expect_error(lambda: cf.build(cfg(ports=many)), "menos de cuatro")
-    return f"7 lengüetas con aviso; tres caras bloqueadas -> {msg}"
+    r = cf.build(cfg(ports=many))
+    check_pieces(r)
+    avisos = [w for w in r["warnings"] if "recorta" in w]
+    assert len(avisos) == 3, avisos
+    return f"lengüeta recortada con aviso; tres caras cortadas -> {len(avisos)} avisos, caja válida"
 
 
 def t_supports_manual():

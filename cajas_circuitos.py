@@ -1011,6 +1011,15 @@ def crear_app():
                        "Por lado; 0,1–0,2 a presión.")
             self._ayuda(self._sec_imanes, "4 en la base y 4 en la tapa, en torres que sobresalen en las "
                         "esquinas. Colócalos de modo que cada par se atraiga.", fila=3)
+            self._sec_anclaje = ttk.LabelFrame(cont, text="Ubicación de imanes o tornillos",
+                                               padding=(12, 6, 12, 10))
+            self._var("anchor_place", "pared")
+            self._radios(self._sec_anclaje, self.v["anchor_place"], (
+                ("Dentro de las esquinas de la pared (la pared se engruesa)", "pared"),
+                ("Torres por fuera de las esquinas (pared delgada)", "torres")))
+            self.lbl_anclaje = ttk.Label(self._sec_anclaje, text="", style="Help.TLabel", wraplength=480,
+                                         justify="left")
+            self.lbl_anclaje.grid(row=2, column=0, columnspan=4, sticky="w", pady=(4, 0))
             self._sec_tornillos = ttk.LabelFrame(cont, text="Tornillos", padding=(12, 6, 12, 10))
             t = self._sec_tornillos
             t.columnconfigure(0, minsize=170)
@@ -1040,12 +1049,14 @@ def crear_app():
         def _secciones_cierre(self):
             """Muestra solo las secciones que aplican al cierre elegido."""
             cierre = self.v["closure"].get()
-            for sec in (self._sec_encaje, self._sec_imanes, self._sec_tornillos):
+            for sec in (self._sec_encaje, self._sec_imanes, self._sec_tornillos, self._sec_anclaje):
                 sec.pack_forget()
             if cierre in M.LIP_CLOSURES:
                 self._sec_encaje.pack(fill="x", pady=(0, 10))
             if cierre == "imanes":
                 self._sec_imanes.pack(fill="x", pady=(0, 10))
+            if cierre == "imanes" or cierre in M.SCREW_CLOSURES:
+                self._sec_anclaje.pack(fill="x", pady=(0, 10))
             if cierre in M.SCREW_CLOSURES:
                 self._sec_tornillos.pack(fill="x", pady=(0, 10))
                 # El largo del inserto solo aplica con insertos.
@@ -1058,6 +1069,18 @@ def crear_app():
                 return
             try:
                 cfg = cfg or M.config_from(dict(self._crudo(), step_path=""))
+                pared = M.anchor_wall(cfg)
+                en = I.actual() == "en"
+                if cfg["closure"] == "imanes" or cfg["closure"] in M.SCREW_CLOSURES:
+                    if cfg["anchor_place"] == "torres":
+                        self.lbl_anclaje.configure(text="Walls stay as set; the towers stick out at the corners."
+                                                   if en else "La pared queda como la elegiste; las torres "
+                                                   "sobresalen en las esquinas.")
+                    else:
+                        self.lbl_anclaje.configure(text=(f"Resulting wall: {fmt(pared)} mm (you set "
+                                                         f"{fmt(cfg['wall'])} mm)." if en else
+                                                         f"Pared que resulta: {fmt(pared)} mm (elegiste "
+                                                         f"{fmt(cfg['wall'])} mm)."))
                 if cfg["closure"] not in M.SCREW_CLOSURES:
                     self.lbl_tornillo.configure(text="")
                     return
@@ -1284,8 +1307,8 @@ def crear_app():
             vis = ttk.Frame(v)
             vis.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 2))
             ttk.Label(vis, text="Mostrar", style="Muted.TLabel").pack(side="left", padx=(0, 10))
-            self.ver = {k: tk.BooleanVar(value=True) for k in ("base", "lid", "board")}
-            for k, t in (("base", "Base"), ("lid", "Tapa"), ("board", "Placa")):
+            self.ver = {k: tk.BooleanVar(value=True) for k in ("base", "lid", "board", "hardware")}
+            for k, t in (("base", "Base"), ("lid", "Tapa"), ("board", "Placa"), ("hardware", "Herrajes")):
                 ttk.Checkbutton(vis, text=t, variable=self.ver[k],
                                 command=self._programar_vista).pack(side="left", padx=(0, 10))
             self.transp = {k: tk.IntVar(value=0) for k in ("base", "lid")}
@@ -1507,6 +1530,7 @@ def crear_app():
             c["board_rest"] = self.v["board_rest"].get()
             c["screw_size"] = self.v["screw_size"].get()
             c["screw_head"] = self.v["screw_head"].get()
+            c["anchor_place"] = self.v["anchor_place"].get()
             c["hold_down"] = bool(self.var_pisadores.get())
             c["supports"] = [dict(s) for s in self.supports]
             c["ports"] = [dict(p) for p in self.ports]
@@ -1681,6 +1705,7 @@ def crear_app():
                 self.v["board_rest"].set(c.get("board_rest", "esquinas"))
                 self.v["screw_size"].set(c.get("screw_size", "M3"))
                 self.v["screw_head"].set(c.get("screw_head", "cilindrica"))
+                self.v["anchor_place"].set(c.get("anchor_place", "pared"))
                 self.var_pisadores.set(bool(c.get("hold_down", False)))
                 self.supports = [dict(s) for s in c.get("supports", [])]
                 self.ports = [dict(p) for p in c.get("ports", [])]

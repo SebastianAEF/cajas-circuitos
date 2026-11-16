@@ -24,7 +24,7 @@ from pathlib import Path
 PROTOCOLO = 1
 ACCIONES = ("estado", "cargar_placa", "calcular", "vista", "exportar", "captura", "detectar", "componentes", "detener")
 VISTAS = ("separada", "cerrada", "explosionada")
-PIEZAS = ("base", "lid", "board")
+PIEZAS = ("base", "lid", "board", "hardware")
 PIEZAS_TRANSPARENCIA = ("base", "lid")
 RE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 RE_CAPTURA = re.compile(r"^[A-Za-z0-9_-]{1,40}\.png$")
@@ -158,7 +158,7 @@ def _validar_vista(datos, salida):
     if "visible" in datos:
         v = datos["visible"]
         if not isinstance(v, dict) or not set(v) <= set(PIEZAS):
-            raise ErrorProtocolo("«visible» debe indicar base, lid y/o board.", "validacion")
+            raise ErrorProtocolo("«visible» debe indicar base, lid, board y/o hardware.", "validacion")
         salida["visible"] = {k: _bool(x, "visible." + k) for k, x in v.items()}
     if "transparencia" in datos:
         t = datos["transparencia"]
